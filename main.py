@@ -13,15 +13,19 @@ import uvicorn
 from pycrdt_websocket import WebsocketServer
 
 # 디렉토리 설정
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
+
+# static 디렉토리 생성
+STATIC_DIR = BASE_DIR / "static"
+STATIC_DIR.mkdir(exist_ok=True)
 
 # FastAPI 앱 설정
 app = FastAPI(title="Yjs + pycrdt-websocket 협업 시스템")
 
 # 정적 파일 및 템플릿 설정
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # WebSocket 서버 인스턴스

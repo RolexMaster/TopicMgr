@@ -26,15 +26,39 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 디렉토리 설정
-BASE_DIR = Path(__file__).parent
+# 기본 설정
+BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
+
+# Azure App Service 환경 디버깅
+print(f"Current working directory: {os.getcwd()}")
+print(f"Script location: {__file__}")
+print(f"BASE_DIR: {BASE_DIR}")
+print(f"Directory contents: {list(BASE_DIR.glob('*'))}")
+
+# static 디렉토리 생성
+STATIC_DIR = BASE_DIR / "static"
+try:
+    STATIC_DIR.mkdir(exist_ok=True)
+    print(f"✅ Static directory created/verified: {STATIC_DIR}")
+except Exception as e:
+    print(f"⚠️ Warning: Could not create static directory: {e}")
+    # 대체 경로 시도
+    STATIC_DIR = Path("/tmp/static")
+    STATIC_DIR.mkdir(exist_ok=True)
+    print(f"✅ Using alternative static directory: {STATIC_DIR}")
 
 # FastAPI 앱 설정
 app = FastAPI(title="Yjs + pycrdt-websocket 협업 시스템")
 
 # 정적 파일 및 템플릿 설정
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    print(f"✅ Static files mounted from: {STATIC_DIR}")
+else:
+    print("⚠️ Warning: Static directory not found, skipping static file mounting")
+    
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
