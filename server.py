@@ -5,16 +5,20 @@ FastAPI와 pycrdt-websocket을 하나의 프로세스에서 실행합니다.
 """
 
 import asyncio
+import json
 import logging
 import os
+import re
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import uvicorn
+import websockets
 from pycrdt import Doc
 from pycrdt_websocket import WebsocketServer, YRoom
 
@@ -133,6 +137,78 @@ class CRDTWebSocketServer(WebsocketServer):
         return self.rooms[room_name]
 
 
+class WebSocketBridge:
+    """FastAPI WebSocket을 websockets 라이브러리와 호환되도록 하는 브리지"""
+    
+    def __init__(self, websocket: WebSocket):
+        self.websocket = websocket
+        self._closed = False
+        self.path = ""
+        self.request_headers = {}
+        self.response_headers = {}
+        
+    async def send(self, data):
+        """데이터 전송"""
+        if self._closed:
+            raise RuntimeError("Connection is closed")
+        
+        if isinstance(data, bytes):
+            await self.websocket.send_bytes(data)
+        elif isinstance(data, str):
+            await self.websocket.send_text(data)
+        else:
+            # data가 이미 인코딩된 경우 처리
+            await self.websocket.send_bytes(data)
+    
+    async def recv(self):
+        """데이터 수신"""
+        if self._closed:
+            raise RuntimeError("Connection is closed")
+        
+        try:
+            # WebSocket 메시지 수신
+            message = await self.websocket.receive()
+            
+            if message["type"] == "websocket.receive":
+                # 바이너리 데이터 우선
+                if "bytes" in message:
+                    return message["bytes"]
+                elif "text" in message:
+                    return message["text"].encode('utf-8')
+            elif message["type"] == "websocket.disconnect":
+                self._closed = True
+                raise RuntimeError("Connection closed")
+            
+        except Exception as e:
+            self._closed = True
+            raise
+    
+    async def close(self, code=1000, reason=""):
+        """연결 종료"""
+        if not self._closed:
+            self._closed = True
+            try:
+                await self.websocket.close(code=code, reason=reason)
+            except Exception:
+                pass
+    
+    async def ping(self, data=None):
+        """Ping 전송 (FastAPI WebSocket에서는 자동 처리됨)"""
+        pass
+    
+    async def pong(self, data=None):
+        """Pong 전송 (FastAPI WebSocket에서는 자동 처리됨)"""
+        pass
+    
+    @property
+    def closed(self):
+        return self._closed
+    
+    @property
+    def open(self):
+        return not self._closed
+
+
 # 전역 WebSocket 서버 인스턴스
 websocket_server = CRDTWebSocketServer(
     auto_clean_rooms=False
@@ -190,50 +266,38 @@ async def index():
     """
 
 
-@app.get("/crdt", response_class=HTMLResponse)
+@app.get("/crdt")
 async def crdt_page(request: Request, room: Optional[str] = None):
     """CRDT 협업 문서 페이지"""
     ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
     # Azure App Service에서는 WebSocket도 메인 포트를 사용
-    if os.environ.get('WEBSITE_SITE_NAME'):  # Azure 환경 감지
-        ws_port = int(os.environ.get('PORT', 8000))
-    return templates.TemplateResponse(
-        "crdt.html",
-        {
-            "request": request,
-            "room": room,
-            "websocket_host": request.url.hostname or "localhost",
-            "websocket_port": ws_port
-        }
-    )
+    is_azure = os.environ.get('WEBSITE_SITE_NAME') is not None
+    
+    context = {
+        "request": request,
+        "room_name": room,
+        "room_dir": ROOMS_DIR,
+        "websocket_host": request.url.hostname or "localhost",
+        "websocket_port": ws_port
+    }
+    
+    return templates.TemplateResponse("crdt.html", context)
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 엔드포인트 - Azure App Service용"""
     await websocket.accept()
+    bridge = WebSocketBridge(websocket)
+    
     try:
         # pycrdt-websocket 서버와 연결
-        await websocket_server.serve(websocket)
+        await websocket_server.serve(bridge)
     except WebSocketDisconnect:
         logger.info("Client disconnected")
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        await websocket.close()
-
-
-@app.websocket("/ws/{path:path}")
-async def websocket_endpoint_with_path(websocket: WebSocket, path: str):
-    """WebSocket 엔드포인트 (패스 포함) - y-websocket 호환"""
-    await websocket.accept()
-    try:
-        # pycrdt-websocket 서버와 연결
-        await websocket_server.serve(websocket)
-    except WebSocketDisconnect:
-        logger.info("Client disconnected")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        await websocket.close()
+        logger.error(f"WebSocket error: {e}", exc_info=True)
+        await bridge.close()
 
 
 async def start_servers():
@@ -243,57 +307,50 @@ async def start_servers():
     ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
     
     # Azure 환경이 아닐 때만 별도 WebSocket 서버 실행
-    websocket_task = None
-    if not os.environ.get('WEBSITE_SITE_NAME'):
+    websocket_server_instance = None
+    is_azure = os.environ.get('WEBSITE_SITE_NAME') is not None
+    
+    if not is_azure:
         # WebSocket 서버 시작을 위한 핸들러
         async def websocket_handler(websocket, path):
             await websocket_server.serve(websocket)
         
-        # 표준 websockets 라이브러리로 서버 시작
-        import websockets
+        # WebSocket 서버 시작
         websocket_server_instance = await websockets.serve(websocket_handler, "0.0.0.0", ws_port)
+        logger.info(f"WebSocket server started on port {ws_port}")
     
     # FastAPI 서버 설정
     config = uvicorn.Config(
         app=app,
         host="0.0.0.0",
         port=http_port,
-        log_level="info",
-        access_log=True
+        log_level="info"
     )
+    
     server = uvicorn.Server(config)
     
-    # 시작 메시지
-    print("\n" + "="*60)
-    print("🚀 Yjs + pycrdt-websocket 협업 시스템 시작")
-    print("="*60)
-    print(f"📄 FastAPI 서버: http://localhost:{http_port}")
-    if not os.environ.get('WEBSITE_SITE_NAME'):
-        print(f"🔌 WebSocket 서버: ws://localhost:{ws_port}")
-    else:
-        print(f"🔌 WebSocket 서버: FastAPI 통합 모드 (포트 {http_port})")
-    print(f"✏️  CRDT 편집기: http://localhost:{http_port}/crdt")
-    print("="*60)
-    print("종료하려면 Ctrl+C를 누르세요.\n")
-    
     try:
-        # FastAPI 서버 시작
-        await server.serve()
-    except KeyboardInterrupt:
-        logger.info("Shutting down servers...")
-    finally:
-        # WebSocket 서버 정리 (Azure가 아닌 경우만)
-        if websocket_task:
-            websocket_task.cancel()
-            try:
-                await websocket_task
-            except asyncio.CancelledError:
-                pass
+        logger.info(f"Starting FastAPI server on port {http_port}...")
+        if is_azure:
+            logger.info("Running in Azure App Service - WebSocket through FastAPI endpoint")
+        else:
+            logger.info(f"WebSocket clients should connect to: ws://localhost:{ws_port}")
         
-        # 모든 room 저장
+        # FastAPI 서버 실행
+        await server.serve()
+    finally:
+        logger.info("Shutting down servers...")
+        
+        # WebSocket 서버 종료 (Azure가 아닌 경우만)
+        if websocket_server_instance:
+            websocket_server_instance.close()
+            await websocket_server_instance.wait_closed()
+        
+        # 모든 방 저장
         for room_name, room in websocket_server.rooms.items():
-            if hasattr(room, '_save_document'):
-                await room._save_document()
+            if hasattr(room, 'save'):
+                await room.save()
+                logger.info(f"Saved room: {room_name}")
         
         logger.info("Servers stopped.")
 
