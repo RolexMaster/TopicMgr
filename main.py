@@ -50,13 +50,14 @@ async def index():
 @app.get("/crdt", response_class=HTMLResponse)
 async def crdt_page(request: Request, room: Optional[str] = None):
     """CRDT 협업 문서 페이지"""
+    ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
     return templates.TemplateResponse(
         "crdt.html",
         {
             "request": request,
             "room": room,
             "websocket_host": request.url.hostname,
-            "websocket_port": 8765
+            "websocket_port": ws_port
         }
     )
 
@@ -64,6 +65,9 @@ async def crdt_page(request: Request, room: Optional[str] = None):
 async def start_websocket_server():
     """pycrdt-websocket 서버 시작"""
     global websocket_server
+    
+    # Azure 환경 변수에서 WebSocket 포트 가져오기
+    ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
     
     # WebSocket 서버 설정
     websocket_server = WebsocketServer(
@@ -98,8 +102,8 @@ async def start_websocket_server():
     
     # WebSocket 서버 시작
     try:
-        print("Starting WebSocket server on port 8765...")
-        await websocket_server.start_websocket_server(host="0.0.0.0", port=8765)
+        print(f"Starting WebSocket server on port {ws_port}...")
+        await websocket_server.start_websocket_server(host="0.0.0.0", port=ws_port)
     except Exception as e:
         print(f"WebSocket server error: {e}")
         raise
@@ -126,6 +130,9 @@ async def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
+    # Azure 환경 변수에서 포트 가져오기
+    http_port = int(os.environ.get('PORT', 8000))
+    
     # WebSocket 서버 시작
     websocket_task = asyncio.create_task(start_websocket_server())
     
@@ -133,7 +140,7 @@ async def main():
     config = uvicorn.Config(
         app=app,
         host="0.0.0.0",
-        port=8000,
+        port=http_port,
         log_level="info",
         reload=False
     )
@@ -141,7 +148,7 @@ async def main():
     
     # 두 서버 동시 실행
     try:
-        print("Starting FastAPI server on port 8000...")
+        print(f"Starting FastAPI server on port {http_port}...")
         await server.serve()
     except Exception as e:
         print(f"Server error: {e}")

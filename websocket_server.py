@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -83,15 +84,18 @@ class CRDTWebSocketServer(WebsocketServer):
 
 async def main():
     """WebSocket 서버 실행"""
+    # Azure 환경 변수에서 포트 가져오기
+    ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
+    
     server = CRDTWebSocketServer(
         auto_clean_rooms=False,
         log_level="INFO"
     )
     
-    logger.info("Starting CRDT WebSocket server on port 8765...")
+    logger.info(f"Starting CRDT WebSocket server on port {ws_port}...")
     
     try:
-        await server.start_websocket_server(host="0.0.0.0", port=8765)
+        await server.start_websocket_server(host="0.0.0.0", port=ws_port)
     except KeyboardInterrupt:
         logger.info("Shutting down server...")
         # 모든 room 저장

@@ -6,6 +6,7 @@ FastAPI와 pycrdt-websocket을 하나의 프로세스에서 실행합니다.
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -169,29 +170,34 @@ async def index():
 @app.get("/crdt", response_class=HTMLResponse)
 async def crdt_page(request: Request, room: Optional[str] = None):
     """CRDT 협업 문서 페이지"""
+    ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
     return templates.TemplateResponse(
         "crdt.html",
         {
             "request": request,
             "room": room,
             "websocket_host": request.url.hostname or "localhost",
-            "websocket_port": 8765
+            "websocket_port": ws_port
         }
     )
 
 
 async def start_servers():
     """서버들을 시작하는 메인 함수"""
+    # Azure 환경 변수에서 포트 가져오기
+    http_port = int(os.environ.get('PORT', 8000))
+    ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
+    
     # WebSocket 서버 시작
     websocket_task = asyncio.create_task(
-        websocket_server.start_websocket_server(host="0.0.0.0", port=8765)
+        websocket_server.start_websocket_server(host="0.0.0.0", port=ws_port)
     )
     
     # FastAPI 서버 설정
     config = uvicorn.Config(
         app=app,
         host="0.0.0.0",
-        port=8000,
+        port=http_port,
         log_level="info",
         access_log=True
     )
@@ -201,9 +207,9 @@ async def start_servers():
     print("\n" + "="*60)
     print("🚀 Yjs + pycrdt-websocket 협업 시스템 시작")
     print("="*60)
-    print("📄 FastAPI 서버: http://localhost:8000")
-    print("🔌 WebSocket 서버: ws://localhost:8765")
-    print("✏️  CRDT 편집기: http://localhost:8000/crdt")
+    print(f"📄 FastAPI 서버: http://localhost:{http_port}")
+    print(f"🔌 WebSocket 서버: ws://localhost:{ws_port}")
+    print(f"✏️  CRDT 편집기: http://localhost:{http_port}/crdt")
     print("="*60)
     print("종료하려면 Ctrl+C를 누르세요.\n")
     

@@ -90,6 +90,8 @@ python run_servers.py
 ├── run_servers.py       # 서버 실행 도우미
 ├── setup.sh             # 초기 설정 스크립트
 ├── start.sh             # 서버 시작 스크립트
+├── startup.txt          # Azure App Service 시작 명령
+├── .env.example         # 환경 변수 예시
 ├── requirements.txt     # Python 패키지 의존성
 └── README.md           # 프로젝트 문서
 ```
@@ -108,9 +110,20 @@ python run_servers.py
 
 ## ⚙️ 환경 설정
 
+### 로컬 환경
 - FastAPI 서버: http://localhost:8000
 - WebSocket 서버: ws://localhost:8765
 - 문서 저장 위치: ./data/{room-name}.ys
+
+### Azure 환경
+환경 변수로 포트 설정:
+- `PORT`: HTTP 서버 포트 (Azure에서 자동 설정)
+- `WEBSOCKET_PORT`: WebSocket 서버 포트 (기본값: 8765)
+
+Azure App Service 시작 명령:
+```
+python server.py
+```
 
 ## 📝 참고사항
 
