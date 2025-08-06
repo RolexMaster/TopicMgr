@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRDT 협업 문서 편집기</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 1rem;
+        }
+        
+        .room-selector {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        .room-form {
+            display: flex;
+            gap: 10px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        .room-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e1e8ed;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .room-input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        .join-button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .join-button:hover {
+            background-color: #2980b9;
+        }
+        
+        .join-button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        
+        .editor-container {
+            display: none;
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e1e8ed;
+        }
+        
+        .room-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .room-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .connected {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .connected .status-dot {
+            background-color: #4caf50;
+        }
+        
+        .disconnected {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        
+        .disconnected .status-dot {
+            background-color: #f44336;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+            100% {
+                opacity: 1;
+            }
+        }
+        
+        .todo-section {
+            margin-top: 20px;
+        }
+        
+        .todo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .todo-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .todo-input-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .todo-input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 2px solid #e1e8ed;
+            border-radius: 6px;
+            font-size: 15px;
+            transition: border-color 0.3s;
+        }
+        
+        .todo-input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        .add-button {
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .add-button:hover {
+            background-color: #229954;
+        }
+        
+        .todo-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .todo-item {
+            background-color: #f8f9fa;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            padding: 14px 18px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .todo-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        
+        .todo-checkbox {
+            margin-right: 12px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .todo-text {
+            flex: 1;
+            color: #333;
+        }
+        
+        .todo-completed .todo-text {
+            text-decoration: line-through;
+            color: #95a5a6;
+        }
+        
+        .delete-button {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .delete-button:hover {
+            background-color: #c0392b;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #95a5a6;
+        }
+        
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+        
+        .leave-button {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .leave-button:hover {
+            background-color: #c0392b;
+        }
+        
+        .error-message {
+            background-color: #fee;
+            color: #c33;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>CRDT 협업 문서 편집기</h1>
+            <p class="subtitle">Yjs + pycrdt-websocket 기반 실시간 동기화</p>
+        </div>
+    </header>
+    
+    <div class="container">
+        <!-- Room 선택 화면 -->
+        <div id="roomSelector" class="room-selector">
+            <h2 style="text-align: center; margin-bottom: 20px;">Room 입장하기</h2>
+            <form class="room-form" onsubmit="joinRoom(event)">
+                <input 
+                    type="text" 
+                    id="roomNameInput" 
+                    class="room-input" 
+                    placeholder="Room 이름을 입력하세요" 
+                    required
+                    value="{{ room or '' }}"
+                >
+                <button type="submit" class="join-button">입장하기</button>
+            </form>
+            <div id="errorMessage" class="error-message"></div>
+        </div>
+        
+        <!-- 편집기 화면 -->
+        <div id="editorContainer" class="editor-container">
+            <div class="editor-header">
+                <div class="room-info">
+                    <div class="room-name">Room: <span id="currentRoomName"></span></div>
+                    <div id="connectionStatus" class="connection-status disconnected">
+                        <span class="status-dot"></span>
+                        <span id="statusText">연결 중...</span>
+                    </div>
+                </div>
+                <button onclick="leaveRoom()" class="leave-button">나가기</button>
+            </div>
+            
+            <div class="todo-section">
+                <div class="todo-header">
+                    <h3 class="todo-title">할 일 목록</h3>
+                    <span id="todoCount" style="color: #7f8c8d; font-size: 14px;">0개 항목</span>
+                </div>
+                
+                <div class="todo-input-container">
+                    <input 
+                        type="text" 
+                        id="todoInput" 
+                        class="todo-input" 
+                        placeholder="새로운 할 일을 입력하세요"
+                        onkeypress="handleTodoKeyPress(event)"
+                    >
+                    <button onclick="addTodo()" class="add-button">추가</button>
+                </div>
+                
+                <ul id="todoList" class="todo-list">
+                    <!-- 할 일 목록이 여기에 표시됩니다 -->
+                </ul>
+                
+                <div id="emptyState" class="empty-state" style="display: none;">
+                    <div class="empty-state-icon">📝</div>
+                    <p>아직 할 일이 없습니다.</p>
+                    <p style="font-size: 14px; margin-top: 5px;">위에서 새로운 할 일을 추가해보세요!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Yjs 및 y-websocket 라이브러리 -->
+    <script src="https://unpkg.com/yjs@13/dist/yjs.min.js"></script>
+    <script src="https://unpkg.com/y-websocket@1/dist/y-websocket.min.js"></script>
+    
+    <script>
+        // 전역 변수
+        let ydoc = null;
+        let provider = null;
+        let todos = null;
+        let currentRoom = null;
+        
+        // URL 파라미터에서 room 이름 가져오기
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomFromUrl = urlParams.get('room');
+        
+        // 페이지 로드 시 room이 URL에 있으면 자동 입장
+        window.onload = function() {
+            if (roomFromUrl) {
+                document.getElementById('roomNameInput').value = roomFromUrl;
+                joinRoom(new Event('submit'));
+            }
+        };
+        
+        function joinRoom(event) {
+            event.preventDefault();
+            
+            const roomName = document.getElementById('roomNameInput').value.trim();
+            if (!roomName) {
+                showError('Room 이름을 입력해주세요.');
+                return;
+            }
+            
+            // 기존 연결이 있으면 정리
+            if (provider) {
+                provider.destroy();
+            }
+            
+            currentRoom = roomName;
+            
+            // URL 업데이트
+            const newUrl = new URL(window.location);
+            newUrl.searchParams.set('room', roomName);
+            window.history.pushState({}, '', newUrl);
+            
+            // UI 전환
+            document.getElementById('roomSelector').style.display = 'none';
+            document.getElementById('editorContainer').style.display = 'block';
+            document.getElementById('currentRoomName').textContent = roomName;
+            
+            // Yjs 초기화
+            initializeYjs(roomName);
+        }
+        
+        function initializeYjs(roomName) {
+            // 새로운 Y 문서 생성
+            ydoc = new Y.Doc();
+            
+            // Todo 배열 생성
+            todos = ydoc.getArray('todos');
+            
+            // WebSocket 연결
+            const wsUrl = `ws://{{ websocket_host }}:{{ websocket_port }}/${roomName}`;
+            provider = new WebsocketProvider(wsUrl, roomName, ydoc, {
+                connect: true
+            });
+            
+            // 연결 상태 모니터링
+            provider.on('status', event => {
+                updateConnectionStatus(event.status === 'connected');
+            });
+            
+            // Todo 목록 변경 감지
+            todos.observe(event => {
+                renderTodos();
+            });
+            
+            // 초기 렌더링
+            renderTodos();
+            
+            // 연결 상태 초기화
+            setTimeout(() => {
+                updateConnectionStatus(provider.wsconnected);
+            }, 100);
+        }
+        
+        function updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('statusText');
+            
+            if (connected) {
+                statusElement.className = 'connection-status connected';
+                statusText.textContent = '연결됨';
+            } else {
+                statusElement.className = 'connection-status disconnected';
+                statusText.textContent = '연결 끊김';
+            }
+        }
+        
+        function addTodo() {
+            const input = document.getElementById('todoInput');
+            const text = input.value.trim();
+            
+            if (!text) {
+                return;
+            }
+            
+            // 새 할 일 추가
+            const newTodo = {
+                id: Date.now().toString(),
+                text: text,
+                completed: false,
+                createdAt: new Date().toISOString()
+            };
+            
+            todos.push([newTodo]);
+            input.value = '';
+            input.focus();
+        }
+        
+        function handleTodoKeyPress(event) {
+            if (event.key === 'Enter') {
+                addTodo();
+            }
+        }
+        
+        function toggleTodo(index) {
+            const todo = todos.get(index);
+            if (todo) {
+                const updatedTodo = { ...todo, completed: !todo.completed };
+                todos.delete(index, 1);
+                todos.insert(index, [updatedTodo]);
+            }
+        }
+        
+        function deleteTodo(index) {
+            todos.delete(index, 1);
+        }
+        
+        function renderTodos() {
+            const todoList = document.getElementById('todoList');
+            const emptyState = document.getElementById('emptyState');
+            const todoCount = document.getElementById('todoCount');
+            
+            // 할 일 목록 가져오기
+            const todoArray = todos ? todos.toArray() : [];
+            
+            // 카운트 업데이트
+            todoCount.textContent = `${todoArray.length}개 항목`;
+            
+            // 빈 상태 처리
+            if (todoArray.length === 0) {
+                todoList.style.display = 'none';
+                emptyState.style.display = 'block';
+                return;
+            }
+            
+            todoList.style.display = 'block';
+            emptyState.style.display = 'none';
+            
+            // 목록 렌더링
+            todoList.innerHTML = todoArray.map((todo, index) => `
+                <li class="todo-item ${todo.completed ? 'todo-completed' : ''}">
+                    <input 
+                        type="checkbox" 
+                        class="todo-checkbox" 
+                        ${todo.completed ? 'checked' : ''} 
+                        onchange="toggleTodo(${index})"
+                    >
+                    <span class="todo-text">${escapeHtml(todo.text)}</span>
+                    <button onclick="deleteTodo(${index})" class="delete-button">삭제</button>
+                </li>
+            `).join('');
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function leaveRoom() {
+            if (provider) {
+                provider.destroy();
+                provider = null;
+            }
+            
+            // URL에서 room 파라미터 제거
+            const newUrl = new URL(window.location);
+            newUrl.searchParams.delete('room');
+            window.history.pushState({}, '', newUrl);
+            
+            // UI 초기화
+            document.getElementById('roomSelector').style.display = 'block';
+            document.getElementById('editorContainer').style.display = 'none';
+            document.getElementById('roomNameInput').value = '';
+            document.getElementById('todoInput').value = '';
+            
+            // 변수 초기화
+            ydoc = null;
+            todos = null;
+            currentRoom = null;
+        }
+        
+        function showError(message) {
+            const errorElement = document.getElementById('errorMessage');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 3000);
+        }
+        
+        // 페이지 언로드 시 정리
+        window.addEventListener('beforeunload', () => {
+            if (provider) {
+                provider.destroy();
+            }
+        });
+    </script>
+</body>
+</html>
