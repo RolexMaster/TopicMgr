@@ -398,8 +398,10 @@
         
         // 페이지 로드 시 room이 URL에 있으면 자동 입장
         window.onload = function() {
+            console.log('페이지 로드됨, roomFromUrl:', roomFromUrl);
             if (roomFromUrl) {
                 document.getElementById('roomNameInput').value = roomFromUrl;
+                console.log('자동으로 방 입장 시도:', roomFromUrl);
                 joinRoom(new Event('submit'));
             }
         };
@@ -435,21 +437,37 @@
         }
         
         function initializeYjs(roomName) {
+            console.log('Yjs 초기화 시작:', roomName);
+            
             // 새로운 Y 문서 생성
             ydoc = new Y.Doc();
             
             // Todo 배열 생성
             todos = ydoc.getArray('todos');
+            console.log('todos 배열 생성됨:', todos);
             
             // WebSocket 연결
             const wsUrl = `ws://{{ websocket_host }}:{{ websocket_port }}/${roomName}`;
+            console.log('WebSocket URL:', wsUrl);
+            
             provider = new WebsocketProvider(wsUrl, roomName, ydoc, {
                 connect: true
             });
             
             // 연결 상태 모니터링
             provider.on('status', event => {
+                console.log('WebSocket 상태 변경:', event.status);
                 updateConnectionStatus(event.status === 'connected');
+            });
+            
+            // WebSocket 연결 에러 처리
+            provider.on('connection-error', (event) => {
+                console.error('WebSocket 연결 에러:', event);
+                showError('서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+            });
+            
+            provider.on('connection-close', (event) => {
+                console.warn('WebSocket 연결이 닫혔습니다:', event);
             });
             
             // Todo 목록 변경 감지
@@ -487,17 +505,30 @@
                 return;
             }
             
-            // 새 할 일 추가
-            const newTodo = {
-                id: Date.now().toString(),
-                text: text,
-                completed: false,
-                createdAt: new Date().toISOString()
-            };
+            // todos가 초기화되었는지 확인
+            if (!todos) {
+                console.error('todos가 초기화되지 않았습니다. 먼저 방에 입장해주세요.');
+                showError('먼저 방에 입장해주세요.');
+                return;
+            }
             
-            todos.push([newTodo]);
-            input.value = '';
-            input.focus();
+            try {
+                // 새 할 일 추가
+                const newTodo = {
+                    id: Date.now().toString(),
+                    text: text,
+                    completed: false,
+                    createdAt: new Date().toISOString()
+                };
+                
+                todos.push([newTodo]);
+                input.value = '';
+                input.focus();
+                console.log('할 일이 추가되었습니다:', newTodo);
+            } catch (error) {
+                console.error('할 일 추가 중 오류 발생:', error);
+                showError('할 일 추가 중 오류가 발생했습니다.');
+            }
         }
         
         function handleTodoKeyPress(event) {
