@@ -211,13 +211,10 @@ async def start_servers():
     http_port = int(os.environ.get('PORT', 8000))
     ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
     
-    # WebSocket 서버 시작을 위한 핸들러
-    async def websocket_handler(websocket, path):
-        await websocket_server.serve(websocket)
-    
-    # 표준 websockets 라이브러리로 서버 시작
-    import websockets
-    websocket_server_instance = await websockets.serve(websocket_handler, "0.0.0.0", ws_port)
+    # WebSocket 서버 시작 (pycrdt-websocket의 내장 서버 사용)
+    websocket_task = asyncio.create_task(
+        websocket_server.start_websocket_server(host="0.0.0.0", port=ws_port)
+    )
     
     # FastAPI 서버 설정
     config = uvicorn.Config(
@@ -240,8 +237,11 @@ async def start_servers():
     print("종료하려면 Ctrl+C를 누르세요.\n")
     
     try:
-        # FastAPI 서버 시작
-        await server.serve()
+        # 두 서버를 동시에 실행
+        await asyncio.gather(
+            server.serve(),
+            websocket_task
+        )
     except KeyboardInterrupt:
         logger.info("Shutting down servers...")
     finally:

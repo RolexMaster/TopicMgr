@@ -442,7 +442,7 @@
             todos = ydoc.getArray('todos');
             
             // WebSocket 연결
-            const wsUrl = `ws://{{ websocket_host }}:{{ websocket_port }}/${roomName}`;
+            const wsUrl = `ws://{{ websocket_host }}:{{ websocket_port }}`;
             provider = new WebsocketProvider(wsUrl, roomName, ydoc, {
                 connect: true
             });
