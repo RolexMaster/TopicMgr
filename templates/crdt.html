@@ -381,9 +381,22 @@
         </div>
     </div>
     
-    <!-- Yjs 및 y-websocket 라이브러리 -->
-    <script src="https://unpkg.com/yjs@13/dist/yjs.min.js"></script>
-    <script src="https://unpkg.com/y-websocket@1/dist/y-websocket.min.js"></script>
+    <!-- Yjs 및 y-websocket 라이브러리 모듈로 로드 -->
+    <script type="module">
+        // ESM 모듈 형식으로 라이브러리 로드
+        import * as Y from 'https://esm.sh/yjs@13.6.27';
+        import { WebsocketProvider } from 'https://esm.sh/y-websocket@1.5.6';
+        
+        // 전역 변수에 할당
+        window.Y = Y;
+        window.WebsocketProvider = WebsocketProvider;
+        
+        console.log('Yjs 모듈 로드 완료:', Y);
+        console.log('WebsocketProvider 모듈 로드 완료:', WebsocketProvider);
+        
+        // 모듈 로드 완료 이벤트 발생
+        window.dispatchEvent(new CustomEvent('modules-loaded'));
+    </script>
     
     <script>
         // 전역 변수
@@ -411,34 +424,70 @@
             }
         }
         
-        // 라이브러리가 로드될 때까지 대기하는 함수
+        // 라이브러리가 로드될 때까지 대기하는 함수 (ESM 모듈 버전)
         function waitForLibraries(callback) {
-            const checkInterval = setInterval(() => {
+            // 이미 로드되었는지 확인
+            if (window.Y && window.WebsocketProvider) {
+                Y = window.Y;
+                WebsocketProvider = window.WebsocketProvider;
+                console.log('라이브러리가 이미 로드되어 있습니다');
+                callback();
+                return;
+            }
+            
+            // modules-loaded 이벤트 대기
+            console.log('모듈 로드 이벤트 대기 중...');
+            window.addEventListener('modules-loaded', function onModulesLoaded() {
+                window.removeEventListener('modules-loaded', onModulesLoaded);
+                
                 if (window.Y && window.WebsocketProvider) {
-                    clearInterval(checkInterval);
-                    // 전역 변수에 라이브러리 할당
                     Y = window.Y;
                     WebsocketProvider = window.WebsocketProvider;
+                    console.log('모듈 로드 이벤트 수신, 라이브러리 사용 준비 완료');
                     callback();
+                } else {
+                    console.error('모듈 로드 이벤트를 받았지만 라이브러리가 없습니다');
+                    showError('라이브러리 로드에 실패했습니다. 페이지를 새로고침해주세요.');
                 }
-            }, 100);
+            });
             
-            // 5초 후에도 로드되지 않으면 에러 표시
+            // 타임아웃 설정 (15초)
             setTimeout(() => {
                 if (!window.Y || !window.WebsocketProvider) {
-                    clearInterval(checkInterval);
-                    console.error('라이브러리 로드 시간 초과');
-                    showError('라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
+                    console.error('라이브러리 로드 시간 초과 (15초)');
+                    showError('라이브러리 로드가 너무 오래 걸립니다. 네트워크 상태를 확인하고 페이지를 새로고침해주세요.');
                 }
-            }, 5000);
+            }, 15000);
         }
         
         // 페이지 로드 시 실행
-        document.addEventListener('DOMContentLoaded', function() {
+        function initializeApp() {
             console.log('페이지 로드됨, roomFromUrl:', roomFromUrl);
+            console.log('라이브러리 로드 상태 확인 중...');
+            console.log('현재 Yjs 상태:', typeof window.Y);
+            console.log('현재 WebsocketProvider 상태:', typeof window.WebsocketProvider);
+            
+            // 로딩 메시지 표시
+            const loadingMessage = document.createElement('div');
+            loadingMessage.id = 'loadingMessage';
+            loadingMessage.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #3498db; color: white; padding: 10px 20px; border-radius: 4px; z-index: 1000;';
+            loadingMessage.textContent = '라이브러리를 로드하고 있습니다...';
+            document.body.appendChild(loadingMessage);
+            
+            // 스크립트 태그 상태 확인
+            const scripts = document.getElementsByTagName('script');
+            for (let script of scripts) {
+                if (script.src.includes('yjs') || script.src.includes('websocket')) {
+                    console.log('스크립트 URL:', script.src, '로드 상태:', script.readyState || 'unknown');
+                }
+            }
             
             // 라이브러리 로드 대기
             waitForLibraries(() => {
+                // 로딩 메시지 제거
+                if (loadingMessage && loadingMessage.parentNode) {
+                    loadingMessage.parentNode.removeChild(loadingMessage);
+                }
                 console.log('Yjs 라이브러리 로드 완료');
                 
                 // Yjs 라이브러리가 로드되었는지 확인
@@ -469,6 +518,22 @@
                     joinRoom(new Event('submit'));
                 }
             });
+        }
+        
+        // DOMContentLoaded와 window.onload 둘 다 사용하여 안정성 향상
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeApp);
+        } else {
+            // 이미 DOMContentLoaded가 발생한 경우
+            initializeApp();
+        }
+        
+        // 백업: window.onload 사용
+        window.addEventListener('load', function() {
+            if (!window.Y || !window.WebsocketProvider) {
+                console.log('window.onload에서 라이브러리 재확인');
+                initializeApp();
+            }
         });
         
         window.joinRoom = function(event) {
