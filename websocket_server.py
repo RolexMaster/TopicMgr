@@ -88,8 +88,7 @@ async def main():
     ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
     
     server = CRDTWebSocketServer(
-        auto_clean_rooms=False,
-        log_level="INFO"
+        auto_clean_rooms=False
     )
     
     logger.info(f"Starting CRDT WebSocket server on port {ws_port}...")
