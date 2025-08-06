@@ -1,0 +1,90 @@
+name: Deploy to Azure Container Instances
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AZURE_CONTAINER_REGISTRY: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+  AZURE_CONTAINER_INSTANCE_NAME: ${{ secrets.AZURE_CONTAINER_INSTANCE_NAME }}
+  AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Azure Container Registry
+      uses: azure/docker-login@v1
+      with:
+        login-server: ${{ env.AZURE_CONTAINER_REGISTRY }}
+        username: ${{ secrets.AZURE_REGISTRY_USERNAME }}
+        password: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
+
+    - name: Build and push web-app image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./web-app
+        push: true
+        tags: ${{ env.AZURE_CONTAINER_REGISTRY }}/web-app:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build and push yjs-server image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./yjs-server
+        push: true
+        tags: ${{ env.AZURE_CONTAINER_REGISTRY }}/yjs-server:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Deploy to Azure Container Instances
+      if: github.ref == 'refs/heads/main'
+      uses: azure/aci-deploy@v1
+      with:
+        resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
+        dns-name-label: ${{ env.AZURE_CONTAINER_INSTANCE_NAME }}
+        image: ${{ env.AZURE_CONTAINER_REGISTRY }}/web-app:${{ github.sha }}
+        registry-login-server: ${{ env.AZURE_CONTAINER_REGISTRY }}
+        registry-username: ${{ secrets.AZURE_REGISTRY_USERNAME }}
+        registry-password: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
+        ports: 8000
+        cpu: 1
+        memory: 1.5
+        environment-variables: ENVIRONMENT=production
+
+    - name: Deploy YJS Server to Azure Container Instances
+      if: github.ref == 'refs/heads/main'
+      uses: azure/aci-deploy@v1
+      with:
+        resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
+        dns-name-label: ${{ env.AZURE_CONTAINER_INSTANCE_NAME }}-yjs
+        image: ${{ env.AZURE_CONTAINER_REGISTRY }}/yjs-server:${{ github.sha }}
+        registry-login-server: ${{ env.AZURE_CONTAINER_REGISTRY }}
+        registry-username: ${{ secrets.AZURE_REGISTRY_USERNAME }}
+        registry-password: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
+        ports: 1234
+        cpu: 0.5
+        memory: 1
+        environment-variables: NODE_ENV=production
+
+    - name: Deploy to Azure Container Apps (Alternative)
+      if: github.ref == 'refs/heads/main'
+      uses: azure/container-apps-deploy-action@v1
+      with:
+        appSourcePath: ${{ github.workspace }}
+        acrName: ${{ env.AZURE_CONTAINER_REGISTRY }}
+        acrUsername: ${{ secrets.AZURE_REGISTRY_USERNAME }}
+        acrPassword: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
+        containerAppName: ${{ env.AZURE_CONTAINER_INSTANCE_NAME }}
+        resourceGroupName: ${{ env.AZURE_RESOURCE_GROUP }}
+        imageToDeploy: ${{ env.AZURE_CONTAINER_REGISTRY }}/web-app:${{ github.sha }}

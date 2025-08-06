@@ -1,0 +1,79 @@
+apiVersion: 2023-05-01
+location: eastus
+name: azure-container-web-app
+properties:
+  managedEnvironmentId: /subscriptions/{subscription-id}/resourceGroups/{resource-group}/providers/Microsoft.App/managedEnvironments/{environment-name}
+  configuration:
+    ingress:
+      external: true
+      targetPort: 8000
+      traffic:
+        - latestRevision: true
+          weight: 100
+    secrets:
+      - name: registry-username
+        value: ${{ secrets.AZURE_REGISTRY_USERNAME }}
+      - name: registry-password
+        value: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
+  template:
+    containers:
+      - name: web-app
+        image: ${{ env.AZURE_CONTAINER_REGISTRY }}/web-app:latest
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+        env:
+          - name: ENVIRONMENT
+            value: production
+        registryServer: ${{ env.AZURE_CONTAINER_REGISTRY }}
+        registryUsername: registry-username
+        registryPassword: registry-password
+    scale:
+      minReplicas: 1
+      maxReplicas: 10
+      rules:
+        - name: http-rule
+          http:
+            metadata:
+              concurrentRequests: 100
+---
+apiVersion: 2023-05-01
+location: eastus
+name: azure-container-yjs-server
+properties:
+  managedEnvironmentId: /subscriptions/{subscription-id}/resourceGroups/{resource-group}/providers/Microsoft.App/managedEnvironments/{environment-name}
+  configuration:
+    ingress:
+      external: true
+      targetPort: 1234
+      traffic:
+        - latestRevision: true
+          weight: 100
+    secrets:
+      - name: registry-username
+        value: ${{ secrets.AZURE_REGISTRY_USERNAME }}
+      - name: registry-password
+        value: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
+  template:
+    containers:
+      - name: yjs-server
+        image: ${{ env.AZURE_CONTAINER_REGISTRY }}/yjs-server:latest
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: PORT
+            value: "1234"
+        registryServer: ${{ env.AZURE_CONTAINER_REGISTRY }}
+        registryUsername: registry-username
+        registryPassword: registry-password
+    scale:
+      minReplicas: 1
+      maxReplicas: 5
+      rules:
+        - name: http-rule
+          http:
+            metadata:
+              concurrentRequests: 50

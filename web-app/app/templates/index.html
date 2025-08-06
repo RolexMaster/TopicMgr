@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure Container Web App</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .hero-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 100px 0;
+        }
+        .feature-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-online { background-color: #28a745; }
+        .status-offline { background-color: #dc3545; }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-cloud"></i> Azure Container App
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#home">홈</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#features">기능</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#status">상태</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero-section">
+        <div class="container text-center">
+            <h1 class="display-4 fw-bold mb-4">
+                <i class="fas fa-rocket"></i> Azure Container Web Application
+            </h1>
+            <p class="lead mb-4">
+                FastAPI와 YJS를 활용한 현대적인 웹 애플리케이션
+            </p>
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="card bg-white bg-opacity-10 text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">서버 정보</h5>
+                            <div id="server-info">로딩 중...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-5">
+        <div class="container">
+            <h2 class="text-center mb-5">주요 기능</h2>
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-bolt fa-3x text-primary mb-3"></i>
+                            <h5 class="card-title">FastAPI</h5>
+                            <p class="card-text">고성능 Python 웹 프레임워크로 구축된 RESTful API</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-users fa-3x text-success mb-3"></i>
+                            <h5 class="card-title">YJS 협업</h5>
+                            <p class="card-text">실시간 협업 기능을 위한 YJS Node.js 서버</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-cloud fa-3x text-info mb-3"></i>
+                            <h5 class="card-title">Azure 배포</h5>
+                            <p class="card-text">GitHub Actions를 통한 자동 Azure 컨테이너 배포</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Status Section -->
+    <section id="status" class="py-5 bg-light">
+        <div class="container">
+            <h2 class="text-center mb-5">서비스 상태</h2>
+            <div class="row">
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-server"></i> 웹 애플리케이션
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="web-app-status">
+                                <span class="status-indicator status-online"></span>
+                                <span>온라인</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-code-branch"></i> YJS 서버
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="yjs-status">
+                                <span class="status-indicator status-offline"></span>
+                                <span>오프라인</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4">
+        <div class="container text-center">
+            <p class="mb-0">
+                <i class="fas fa-code"></i> Azure Container Web Application
+            </p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 서버 정보 가져오기
+        async function loadServerInfo() {
+            try {
+                const response = await fetch('/api/info');
+                const data = await response.json();
+                document.getElementById('server-info').innerHTML = `
+                    <strong>서비스:</strong> ${data.service}<br>
+                    <strong>버전:</strong> ${data.version}<br>
+                    <strong>환경:</strong> ${data.environment}
+                `;
+            } catch (error) {
+                document.getElementById('server-info').innerHTML = '서버 정보를 불러올 수 없습니다.';
+            }
+        }
+
+        // YJS 서버 상태 확인
+        async function checkYJSStatus() {
+            try {
+                const response = await fetch('http://localhost:1234/health');
+                if (response.ok) {
+                    document.getElementById('yjs-status').innerHTML = `
+                        <span class="status-indicator status-online"></span>
+                        <span>온라인</span>
+                    `;
+                } else {
+                    throw new Error('YJS 서버 응답 없음');
+                }
+            } catch (error) {
+                document.getElementById('yjs-status').innerHTML = `
+                    <span class="status-indicator status-offline"></span>
+                    <span>오프라인</span>
+                `;
+            }
+        }
+
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', function() {
+            loadServerInfo();
+            checkYJSStatus();
+            
+            // 주기적으로 상태 확인
+            setInterval(checkYJSStatus, 30000);
+        });
+    </script>
+</body>
+</html>

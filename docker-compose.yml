@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  web-app:
+    build: ./web-app
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+    volumes:
+      - ./web-app/app:/app/app
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  yjs-server:
+    build: ./yjs-server
+    ports:
+      - "1234:1234"
+    environment:
+      - NODE_ENV=development
+      - PORT=1234
+    volumes:
+      - ./yjs-server/src:/app/src
+      - ./yjs-server/public:/app/public
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
