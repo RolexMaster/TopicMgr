@@ -276,7 +276,6 @@ async def crdt_page(request: Request, room: Optional[str] = None):
     context = {
         "request": request,
         "room_name": room,
-        "room_dir": ROOMS_DIR,
         "websocket_host": request.url.hostname or "localhost",
         "websocket_port": ws_port
     }
