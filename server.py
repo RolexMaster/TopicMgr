@@ -19,8 +19,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import uvicorn
 import websockets
-from pycrdt import Doc
-from pycrdt_websocket import WebsocketServer, YRoom
+try:
+    from pycrdt import Doc
+    from pycrdt_websocket import WebsocketServer, YRoom
+except ImportError:
+    # Use mock implementation if pycrdt is not available
+    from pycrdt_mock import Doc, WebsocketServer, YRoom
 
 # 로깅 설정
 logging.basicConfig(

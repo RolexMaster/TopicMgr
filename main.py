@@ -10,7 +10,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import uvicorn
-from pycrdt_websocket import WebsocketServer
+try:
+    from pycrdt_websocket import WebsocketServer
+except ImportError:
+    # Use mock implementation if pycrdt is not available
+    from pycrdt_mock import WebsocketServer
 
 # 디렉토리 설정
 BASE_DIR = Path(__file__).resolve().parent
