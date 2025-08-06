@@ -583,12 +583,13 @@
             let wsUrl;
             if (isAzure) {
                 // Azure: FastAPI WebSocket 엔드포인트 사용
-                wsUrl = `${protocol}//{{ websocket_host }}/ws/${roomName}`;
+                wsUrl = `${protocol}//{{ websocket_host }}/ws`;
             } else {
                 // 로컬: 별도 WebSocket 서버 사용
-                wsUrl = `${protocol}//{{ websocket_host }}:{{ websocket_port }}/${roomName}`;
+                wsUrl = `${protocol}//{{ websocket_host }}:{{ websocket_port }}`;
             }
             console.log('WebSocket URL:', wsUrl);
+            console.log('Room name:', roomName);
             
             provider = new WebsocketProvider(wsUrl, roomName, ydoc, {
                 connect: true
