@@ -214,9 +214,14 @@ class WebSocketBridge:
 
 
 # 전역 WebSocket 서버 인스턴스
-websocket_server = CRDTWebSocketServer(
-    auto_clean_rooms=False
-)
+try:
+    # Try with auto_clean_rooms parameter (for real pycrdt)
+    websocket_server = CRDTWebSocketServer(
+        auto_clean_rooms=False
+    )
+except TypeError:
+    # Fall back to simple initialization (for mock)
+    websocket_server = CRDTWebSocketServer()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -291,13 +296,19 @@ async def crdt_page(request: Request, room: Optional[str] = None):
 async def websocket_endpoint(websocket: WebSocket, room_name: str):
     """WebSocket 엔드포인트 - Azure App Service용"""
     await websocket.accept()
+    logger.info(f"WebSocket connected for room: {room_name}")
     bridge = WebSocketBridge(websocket)
     # pycrdt-websocket이 경로에서 room name을 추출하도록 설정
     bridge.path = f"/{room_name}"
     
     try:
         # pycrdt-websocket 서버와 연결
-        await websocket_server.serve(bridge)
+        if hasattr(websocket_server, 'handle_websocket'):
+            # Mock implementation
+            await websocket_server.handle_websocket(bridge, f"/{room_name}")
+        else:
+            # Real pycrdt-websocket
+            await websocket_server.serve(bridge)
     except WebSocketDisconnect:
         logger.info(f"Client disconnected from room: {room_name}")
     except Exception as e:
