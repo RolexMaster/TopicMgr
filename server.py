@@ -208,17 +208,17 @@ async def crdt_page(request: Request, room: Optional[str] = None):
     )
 
 
-@app.websocket("/ws/{room_name}")
-async def websocket_endpoint(websocket: WebSocket, room_name: str):
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 엔드포인트 - Azure App Service용"""
     await websocket.accept()
     try:
         # pycrdt-websocket 서버와 연결
         await websocket_server.serve(websocket)
     except WebSocketDisconnect:
-        logger.info(f"Client disconnected from room {room_name}")
+        logger.info("Client disconnected")
     except Exception as e:
-        logger.error(f"WebSocket error in room {room_name}: {e}")
+        logger.error(f"WebSocket error: {e}")
         await websocket.close()
 
 
