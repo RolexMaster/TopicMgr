@@ -1,0 +1,2 @@
+This is a placeholder file to ensure the static directory is included in deployments.
+You can safely delete this file after adding your own static assets.
