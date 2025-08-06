@@ -283,11 +283,13 @@ async def crdt_page(request: Request, room: Optional[str] = None):
     return templates.TemplateResponse("crdt.html", context)
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+@app.websocket("/ws/{room_name}")
+async def websocket_endpoint(websocket: WebSocket, room_name: str):
     """WebSocket 엔드포인트 - Azure App Service용"""
     await websocket.accept()
     bridge = WebSocketBridge(websocket)
+    # room 정보를 bridge에 설정
+    bridge.path = f"/{room_name}"
     
     try:
         # pycrdt-websocket 서버와 연결
