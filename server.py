@@ -283,21 +283,19 @@ async def crdt_page(request: Request, room: Optional[str] = None):
     return templates.TemplateResponse("crdt.html", context)
 
 
-@app.websocket("/ws/{room_name:path}")
-async def websocket_endpoint(websocket: WebSocket, room_name: str):
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 엔드포인트 - Azure App Service용"""
     await websocket.accept()
     bridge = WebSocketBridge(websocket)
-    # pycrdt-websocket이 경로에서 room name을 추출하도록 설정
-    bridge.path = f"/{room_name}"
     
     try:
         # pycrdt-websocket 서버와 연결
         await websocket_server.serve(bridge)
     except WebSocketDisconnect:
-        logger.info(f"Client disconnected from room: {room_name}")
+        logger.info("Client disconnected")
     except Exception as e:
-        logger.error(f"WebSocket error in room {room_name}: {e}", exc_info=True)
+        logger.error(f"WebSocket error: {e}", exc_info=True)
         await bridge.close()
 
 
