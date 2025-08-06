@@ -365,7 +365,7 @@
                         placeholder="새로운 할 일을 입력하세요"
                         onkeypress="handleTodoKeyPress(event)"
                     >
-                    <button onclick="addTodo()" class="add-button">추가</button>
+                    <button onclick="console.log('버튼 클릭됨'); addTodo()" class="add-button">추가</button>
                 </div>
                 
                 <ul id="todoList" class="todo-list">
@@ -399,6 +399,17 @@
         // 페이지 로드 시 room이 URL에 있으면 자동 입장
         window.onload = function() {
             console.log('페이지 로드됨, roomFromUrl:', roomFromUrl);
+            
+            // 추가 버튼에 이벤트 리스너 추가 (백업)
+            const addButton = document.querySelector('.add-button');
+            if (addButton) {
+                console.log('추가 버튼에 이벤트 리스너 추가');
+                addButton.addEventListener('click', function(e) {
+                    console.log('추가 버튼 클릭 (이벤트 리스너)');
+                    window.addTodo();
+                });
+            }
+            
             if (roomFromUrl) {
                 document.getElementById('roomNameInput').value = roomFromUrl;
                 console.log('자동으로 방 입장 시도:', roomFromUrl);
@@ -406,7 +417,7 @@
             }
         };
         
-        function joinRoom(event) {
+        window.joinRoom = function(event) {
             event.preventDefault();
             
             const roomName = document.getElementById('roomNameInput').value.trim();
@@ -497,11 +508,18 @@
             }
         }
         
-        function addTodo() {
+        window.addTodo = function() {
+            console.log('addTodo 함수 호출됨');
             const input = document.getElementById('todoInput');
+            if (!input) {
+                console.error('todoInput 요소를 찾을 수 없습니다');
+                return;
+            }
             const text = input.value.trim();
+            console.log('입력된 텍스트:', text);
             
             if (!text) {
+                console.log('텍스트가 비어있음');
                 return;
             }
             
@@ -511,6 +529,7 @@
                 showError('먼저 방에 입장해주세요.');
                 return;
             }
+            console.log('todos 상태:', todos, 'todos 타입:', typeof todos);
             
             try {
                 // 새 할 일 추가
@@ -521,23 +540,26 @@
                     createdAt: new Date().toISOString()
                 };
                 
+                console.log('todos.push 호출 전');
                 todos.push([newTodo]);
+                console.log('todos.push 호출 후');
                 input.value = '';
                 input.focus();
                 console.log('할 일이 추가되었습니다:', newTodo);
             } catch (error) {
                 console.error('할 일 추가 중 오류 발생:', error);
+                console.error('오류 스택:', error.stack);
                 showError('할 일 추가 중 오류가 발생했습니다.');
             }
         }
         
-        function handleTodoKeyPress(event) {
+        window.handleTodoKeyPress = function(event) {
             if (event.key === 'Enter') {
                 addTodo();
             }
         }
         
-        function toggleTodo(index) {
+        window.toggleTodo = function(index) {
             const todo = todos.get(index);
             if (todo) {
                 const updatedTodo = { ...todo, completed: !todo.completed };
@@ -546,7 +568,7 @@
             }
         }
         
-        function deleteTodo(index) {
+        window.deleteTodo = function(index) {
             todos.delete(index, 1);
         }
         
@@ -592,7 +614,7 @@
             return div.innerHTML;
         }
         
-        function leaveRoom() {
+        window.leaveRoom = function() {
             if (provider) {
                 provider.destroy();
                 provider = null;
