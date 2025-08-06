@@ -392,6 +392,10 @@
         let todos = null;
         let currentRoom = null;
         
+        // CDN에서 로드된 라이브러리를 안전하게 참조
+        const Y = window.Y;
+        const WebsocketProvider = window.WebsocketProvider;
+        
         // URL 파라미터에서 room 이름 가져오기
         const urlParams = new URLSearchParams(window.location.search);
         const roomFromUrl = urlParams.get('room');
@@ -399,6 +403,18 @@
         // 페이지 로드 시 room이 URL에 있으면 자동 입장
         window.onload = function() {
             console.log('페이지 로드됨, roomFromUrl:', roomFromUrl);
+            
+            // Yjs 라이브러리가 로드되었는지 확인
+            if (!window.Y) {
+                console.error('Yjs 라이브러리가 로드되지 않았습니다.');
+                showError('Yjs 라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
+                return;
+            }
+            if (!window.WebsocketProvider) {
+                console.error('y-websocket 라이브러리가 로드되지 않았습니다.');
+                showError('y-websocket 라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
+                return;
+            }
             
             // 추가 버튼에 이벤트 리스너 추가 (백업)
             const addButton = document.querySelector('.add-button');
