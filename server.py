@@ -222,6 +222,20 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close()
 
 
+@app.websocket("/ws/{path:path}")
+async def websocket_endpoint_with_path(websocket: WebSocket, path: str):
+    """WebSocket 엔드포인트 (패스 포함) - y-websocket 호환"""
+    await websocket.accept()
+    try:
+        # pycrdt-websocket 서버와 연결
+        await websocket_server.serve(websocket)
+    except WebSocketDisconnect:
+        logger.info("Client disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await websocket.close()
+
+
 async def start_servers():
     """서버들을 시작하는 메인 함수"""
     # Azure 환경 변수에서 포트 가져오기
