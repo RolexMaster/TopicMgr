@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -194,6 +194,9 @@ async def index():
 async def crdt_page(request: Request, room: Optional[str] = None):
     """CRDT 협업 문서 페이지"""
     ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
+    # Azure App Service에서는 WebSocket도 메인 포트를 사용
+    if os.environ.get('WEBSITE_SITE_NAME'):  # Azure 환경 감지
+        ws_port = int(os.environ.get('PORT', 8000))
     return templates.TemplateResponse(
         "crdt.html",
         {
@@ -205,19 +208,36 @@ async def crdt_page(request: Request, room: Optional[str] = None):
     )
 
 
+@app.websocket("/ws/{room_name}")
+async def websocket_endpoint(websocket: WebSocket, room_name: str):
+    """WebSocket 엔드포인트 - Azure App Service용"""
+    await websocket.accept()
+    try:
+        # pycrdt-websocket 서버와 연결
+        await websocket_server.serve(websocket)
+    except WebSocketDisconnect:
+        logger.info(f"Client disconnected from room {room_name}")
+    except Exception as e:
+        logger.error(f"WebSocket error in room {room_name}: {e}")
+        await websocket.close()
+
+
 async def start_servers():
     """서버들을 시작하는 메인 함수"""
     # Azure 환경 변수에서 포트 가져오기
     http_port = int(os.environ.get('PORT', 8000))
     ws_port = int(os.environ.get('WEBSOCKET_PORT', 8765))
     
-    # WebSocket 서버 시작을 위한 핸들러
-    async def websocket_handler(websocket, path):
-        await websocket_server.serve(websocket)
-    
-    # 표준 websockets 라이브러리로 서버 시작
-    import websockets
-    websocket_server_instance = await websockets.serve(websocket_handler, "0.0.0.0", ws_port)
+    # Azure 환경이 아닐 때만 별도 WebSocket 서버 실행
+    websocket_task = None
+    if not os.environ.get('WEBSITE_SITE_NAME'):
+        # WebSocket 서버 시작을 위한 핸들러
+        async def websocket_handler(websocket, path):
+            await websocket_server.serve(websocket)
+        
+        # 표준 websockets 라이브러리로 서버 시작
+        import websockets
+        websocket_server_instance = await websockets.serve(websocket_handler, "0.0.0.0", ws_port)
     
     # FastAPI 서버 설정
     config = uvicorn.Config(
@@ -234,7 +254,10 @@ async def start_servers():
     print("🚀 Yjs + pycrdt-websocket 협업 시스템 시작")
     print("="*60)
     print(f"📄 FastAPI 서버: http://localhost:{http_port}")
-    print(f"🔌 WebSocket 서버: ws://localhost:{ws_port}")
+    if not os.environ.get('WEBSITE_SITE_NAME'):
+        print(f"🔌 WebSocket 서버: ws://localhost:{ws_port}")
+    else:
+        print(f"🔌 WebSocket 서버: FastAPI 통합 모드 (포트 {http_port})")
     print(f"✏️  CRDT 편집기: http://localhost:{http_port}/crdt")
     print("="*60)
     print("종료하려면 Ctrl+C를 누르세요.\n")
@@ -245,12 +268,13 @@ async def start_servers():
     except KeyboardInterrupt:
         logger.info("Shutting down servers...")
     finally:
-        # WebSocket 서버 정리
-        websocket_task.cancel()
-        try:
-            await websocket_task
-        except asyncio.CancelledError:
-            pass
+        # WebSocket 서버 정리 (Azure가 아닌 경우만)
+        if websocket_task:
+            websocket_task.cancel()
+            try:
+                await websocket_task
+            except asyncio.CancelledError:
+                pass
         
         # 모든 room 저장
         for room_name, room in websocket_server.rooms.items():

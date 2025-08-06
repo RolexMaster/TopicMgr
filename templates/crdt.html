@@ -577,7 +577,17 @@
             console.log('todos 배열 생성됨:', todos);
             
             // WebSocket 연결
-            const wsUrl = `ws://{{ websocket_host }}:{{ websocket_port }}/${roomName}`;
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            // Azure App Service에서는 WebSocket이 기본 포트를 통해 프록시됨
+            const isAzure = window.location.hostname.includes('azurewebsites.net');
+            let wsUrl;
+            if (isAzure) {
+                // Azure: FastAPI WebSocket 엔드포인트 사용
+                wsUrl = `${protocol}//{{ websocket_host }}/ws/${roomName}`;
+            } else {
+                // 로컬: 별도 WebSocket 서버 사용
+                wsUrl = `${protocol}//{{ websocket_host }}:{{ websocket_port }}/${roomName}`;
+            }
             console.log('WebSocket URL:', wsUrl);
             
             provider = new WebsocketProvider(wsUrl, roomName, ydoc, {
