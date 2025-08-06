@@ -391,47 +391,85 @@
         let provider = null;
         let todos = null;
         let currentRoom = null;
-        
-        // CDN에서 로드된 라이브러리를 안전하게 참조
-        const Y = window.Y;
-        const WebsocketProvider = window.WebsocketProvider;
+        let Y = null;
+        let WebsocketProvider = null;
         
         // URL 파라미터에서 room 이름 가져오기
         const urlParams = new URLSearchParams(window.location.search);
         const roomFromUrl = urlParams.get('room');
         
-        // 페이지 로드 시 room이 URL에 있으면 자동 입장
-        window.onload = function() {
+        // 에러 메시지 표시 함수 (라이브러리 로드 전에도 사용 가능하도록)
+        function showError(message) {
+            const errorElement = document.getElementById('errorMessage');
+            if (errorElement) {
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+                
+                setTimeout(() => {
+                    errorElement.style.display = 'none';
+                }, 3000);
+            }
+        }
+        
+        // 라이브러리가 로드될 때까지 대기하는 함수
+        function waitForLibraries(callback) {
+            const checkInterval = setInterval(() => {
+                if (window.Y && window.WebsocketProvider) {
+                    clearInterval(checkInterval);
+                    // 전역 변수에 라이브러리 할당
+                    Y = window.Y;
+                    WebsocketProvider = window.WebsocketProvider;
+                    callback();
+                }
+            }, 100);
+            
+            // 5초 후에도 로드되지 않으면 에러 표시
+            setTimeout(() => {
+                if (!window.Y || !window.WebsocketProvider) {
+                    clearInterval(checkInterval);
+                    console.error('라이브러리 로드 시간 초과');
+                    showError('라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
+                }
+            }, 5000);
+        }
+        
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', function() {
             console.log('페이지 로드됨, roomFromUrl:', roomFromUrl);
             
-            // Yjs 라이브러리가 로드되었는지 확인
-            if (!window.Y) {
-                console.error('Yjs 라이브러리가 로드되지 않았습니다.');
-                showError('Yjs 라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
-                return;
-            }
-            if (!window.WebsocketProvider) {
-                console.error('y-websocket 라이브러리가 로드되지 않았습니다.');
-                showError('y-websocket 라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
-                return;
-            }
-            
-            // 추가 버튼에 이벤트 리스너 추가 (백업)
-            const addButton = document.querySelector('.add-button');
-            if (addButton) {
-                console.log('추가 버튼에 이벤트 리스너 추가');
-                addButton.addEventListener('click', function(e) {
-                    console.log('추가 버튼 클릭 (이벤트 리스너)');
-                    window.addTodo();
-                });
-            }
-            
-            if (roomFromUrl) {
-                document.getElementById('roomNameInput').value = roomFromUrl;
-                console.log('자동으로 방 입장 시도:', roomFromUrl);
-                joinRoom(new Event('submit'));
-            }
-        };
+            // 라이브러리 로드 대기
+            waitForLibraries(() => {
+                console.log('Yjs 라이브러리 로드 완료');
+                
+                // Yjs 라이브러리가 로드되었는지 확인
+                if (!Y) {
+                    console.error('Yjs 라이브러리가 로드되지 않았습니다.');
+                    showError('Yjs 라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
+                    return;
+                }
+                if (!WebsocketProvider) {
+                    console.error('y-websocket 라이브러리가 로드되지 않았습니다.');
+                    showError('y-websocket 라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
+                    return;
+                }
+                
+                // 추가 버튼에 이벤트 리스너 추가 (백업)
+                const addButton = document.querySelector('.add-button');
+                if (addButton) {
+                    console.log('추가 버튼에 이벤트 리스너 추가');
+                    addButton.addEventListener('click', function(e) {
+                        console.log('추가 버튼 클릭 (이벤트 리스너)');
+                        window.addTodo();
+                    });
+                }
+                
+                if (roomFromUrl) {
+                    document.getElementById('roomNameInput').value = roomFromUrl;
+                    console.log('자동으로 방 입장 시도:', roomFromUrl);
+                    joinRoom(new Event('submit'));
+                }
+            });
+        });
         
         window.joinRoom = function(event) {
             event.preventDefault();
@@ -651,16 +689,6 @@
             ydoc = null;
             todos = null;
             currentRoom = null;
-        }
-        
-        function showError(message) {
-            const errorElement = document.getElementById('errorMessage');
-            errorElement.textContent = message;
-            errorElement.style.display = 'block';
-            
-            setTimeout(() => {
-                errorElement.style.display = 'none';
-            }, 3000);
         }
         
         // 페이지 언로드 시 정리
