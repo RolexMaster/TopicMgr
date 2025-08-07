@@ -42,96 +42,145 @@ class FileBackedYRoom(YRoom):
         self._save_task = None
         logger.info(f"Room created: {room_name}")
 
-async def on_connect(self):
-    if self.file_path.exists():
-        try:
-            with open(self.file_path, "rb") as f:
-                state = f.read()
-                if state:
-                    self.ydoc.apply_update(state)
-                    logger.info(f"Loaded {self.room_name} from disk")
-        except Exception as e:
-            logger.error(f"Failed to load room {self.room_name}: {e}")
-    self._save_task = asyncio.create_task(self._auto_save())
-    self.ready = True
+    async def on_connect(self):
+        if self.file_path.exists():
+            try:
+                with open(self.file_path, "rb") as f:
+                    state = f.read()
+                    if state:
+                        self.ydoc.apply_update(state)
+                        logger.info(f"Loaded {self.room_name} from disk")
+            except Exception as e:
+                logger.error(f"Failed to load room {self.room_name}: {e}")
+        self._save_task = asyncio.create_task(self._auto_save())
+        self.ready = True
 
-async def on_disconnect(self):
-    if self._save_task:
-        self._save_task.cancel()
-        try:
-            await self._save_task
-        except asyncio.CancelledError:
-            pass
-    await self._save_document()
-
-async def _auto_save(self):
-    while True:
-        await asyncio.sleep(5)
+    async def on_disconnect(self):
+        if self._save_task:
+            self._save_task.cancel()
+            try:
+                await self._save_task
+            except asyncio.CancelledError:
+                pass
         await self._save_document()
 
-async def _save_document(self):
-    try:
-        state = self.ydoc.get_state()
-        if state:
-            with open(self.file_path, "wb") as f:
-                f.write(state)
-    except Exception as e:
-        logger.error(f"Failed to save room {self.room_name}: {e}")
+    async def _auto_save(self):
+        while True:
+            await asyncio.sleep(5)
+            await self._save_document()
+
+    async def _save_document(self):
+        try:
+            state = self.ydoc.get_state()
+            if state:
+                with open(self.file_path, "wb") as f:
+                    f.write(state)
+        except Exception as e:
+            logger.error(f"Failed to save room {self.room_name}: {e}")
 
 #서버 인스턴스
-# 커스텀 WebsocketServer 정의
-class CustomWebsocketServer(WebsocketServer):
-    def get_room(self, room_name: str) -> YRoom:
-        if room_name not in self.rooms:
-            self.rooms[room_name] = FileBackedYRoom(room_name)
-        return self.rooms[room_name]
-    async def serve_websocket(self, websocket: WebSocket, path: str):
-        # 1) WebSocket 연결 성립
-        await websocket.accept()
-
-        # 2) path로부터 방 이름(room_name) 추출
-        room_name = path.lstrip("/")
-
-        try:
-            while True:
-                # 3) 클라이언트 메시지 수신
-                event = await websocket.receive()
-                # 텍스트 메시지가 왔을 때만 사용
-                if event["type"] == "websocket.receive" and "text" in event:
-                    text = event["text"]
-                    if text:  # 빈 문자열 필터
-                        await websocket.send_text(f"[{room_name}] Echo: {text}")
-
-                # 바이너리 메시지는 따로 필요하면 처리
-                elif event["type"] == "websocket.receive" and "bytes" in event:
-                    data = event["bytes"]
-                    # 예: 바이너리 무시 또는 별도 로직
-                    continue
-
-                # 클라이언트 정상 종료
-                elif event["type"] == "websocket.disconnect":
-                    break
-
-                # 4) 처리 로직 (방 이름을 이용한 컨텍스트 추가 가능)
-                response = f"[{room_name}] Echo: {text}"
-
-                # 5) 클라이언트로 응답
-                await websocket.send_text(response)
-        except WebSocketDisconnect:
-            # 연결 종료 시 정리 작업
-            print(f"WebSocket disconnected from {room_name}")
-
-# 서버 인스턴스 생성
-websocket_server = CustomWebsocketServer()
+websocket_server = WebsocketServer()
 
 #FastAPI 라우트
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/index", response_class=HTMLResponse)
 async def index():
-    """단순 Hello World 페이지"""
+    """메인 페이지"""
     return """
-    Hello
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>CRDT XML 협업 편집기</title>
+        <meta charset="utf-8">
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+                max-width: 800px;
+                margin: 50px auto;
+                padding: 20px;
+                background-color: #f5f5f5;
+            }
+            h1 {
+                color: #333;
+                text-align: center;
+            }
+            .description {
+                text-align: center;
+                color: #666;
+                margin: 20px 0;
+                line-height: 1.6;
+            }
+            .features {
+                background: white;
+                padding: 30px;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                margin: 30px 0;
+            }
+            .features h2 {
+                color: #2c3e50;
+                margin-bottom: 20px;
+            }
+            .features ul {
+                list-style: none;
+                padding: 0;
+            }
+            .features li {
+                padding: 10px 0;
+                padding-left: 30px;
+                position: relative;
+            }
+            .features li:before {
+                content: "✓";
+                position: absolute;
+                left: 0;
+                color: #27ae60;
+                font-weight: bold;
+            }
+            .link-container {
+                text-align: center;
+                margin-top: 30px;
+            }
+            a {
+                display: inline-block;
+                padding: 12px 24px;
+                background-color: #3498db;
+                color: white;
+                text-decoration: none;
+                border-radius: 6px;
+                font-weight: 600;
+                transition: background-color 0.3s;
+            }
+            a:hover {
+                background-color: #2980b9;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>CRDT XML 협업 편집기</h1>
+        <p class="description">
+            Yjs와 pycrdt-websocket을 기반으로 한 실시간 XML 문서 협업 편집 시스템입니다.<br>
+            여러 사용자가 동시에 XML 문서를 편집하고 실시간으로 동기화할 수 있습니다.
+        </p>
+        
+        <div class="features">
+            <h2>주요 기능</h2>
+            <ul>
+                <li>실시간 다중 사용자 XML 편집</li>
+                <li>CRDT 기반 충돌 없는 동기화</li>
+                <li>XML 구문 검증 및 포맷팅</li>
+                <li>XML 파일 업로드/다운로드</li>
+                <li>자동 저장 및 복구</li>
+                <li>룸 기반 협업 공간</li>
+            </ul>
+        </div>
+        
+        <div class="link-container">
+            <a href="/crdt">XML 편집기 시작하기</a>
+        </div>
+    </body>
+    </html>
     """
 
 @app.get("/crdt")
@@ -146,7 +195,12 @@ async def crdt_page(request: Request, room: Optional[str] = None):
 @app.websocket("/ws/{room_name:path}")
 async def websocket_endpoint(websocket: WebSocket, room_name: str):
     try:
-        await websocket_server.serve_websocket(websocket, f"/{room_name}")
+        # WebsocketServer의 get_room 메서드를 사용하여 room 가져오기
+        if room_name not in websocket_server.rooms:
+            websocket_server.rooms[room_name] = FileBackedYRoom(room_name)
+        
+        # pycrdt-websocket의 serve 메서드 사용
+        await websocket_server.serve(websocket, room_name)
     except WebSocketDisconnect:
         logger.info(f"Client disconnected from {room_name}")
     except Exception as e:
