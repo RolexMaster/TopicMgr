@@ -11,9 +11,10 @@ from fastapi.templating import Jinja2Templates
 
 import uvicorn
 from pycrdt_websocket import WebsocketServer, YRoom
+from contextlib import asynccontextmanager
+from types import MethodType
 
-#기본 설정
-
+# 기본 설정
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 STATIC_DIR = BASE_DIR / "static"
@@ -21,19 +22,16 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 DATA_DIR.mkdir(exist_ok=True)
 STATIC_DIR.mkdir(exist_ok=True)
 
-#로깅 설정
-
+# 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-#FastAPI 앱
-
+# FastAPI 앱
 app = FastAPI(title="Yjs + pycrdt-websocket 통합 서버")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-#YRoom 정의
-
+# YRoom 정의
 class FileBackedYRoom(YRoom):
     def __init__(self, room_name: str):
         super().__init__(ready=False)
@@ -78,11 +76,25 @@ class FileBackedYRoom(YRoom):
         except Exception as e:
             logger.error(f"Failed to save room {self.room_name}: {e}")
 
-#서버 인스턴스
-websocket_server = WebsocketServer()
 
-#FastAPI 라우트
+# CRDT 서버 인스턴스
+websocket_server = WebsocketServer(auto_clean_rooms=False)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # start()를 백그라운드 태스크로 실행
+    bg_task = asyncio.create_task(websocket_server.start())
+    # yield 이후에 클라이언트 요청을 받음
+    yield
+    # 앱 종료 시 서버 정리
+    await websocket_server.close()
+    # start() 태스크도 정리
+    await bg_task
+
+# FastAPI에 lifespan 파라미터 전달
+app = FastAPI(lifespan=lifespan)
+
+# FastAPI 라우트
 @app.get("/", response_class=HTMLResponse)
 @app.get("/index", response_class=HTMLResponse)
 async def index():
@@ -194,21 +206,32 @@ async def crdt_page(request: Request, room: Optional[str] = None):
 
 @app.websocket("/ws/{room_name:path}")
 async def websocket_endpoint(websocket: WebSocket, room_name: str):
+    await websocket.accept()
+    # 1) 라이브러리가 기대하는 path 속성 붙이기
+    websocket.path = websocket.scope["path"]
+    
+    # 2) Starlette WebSocket.send를 어댑터로 덮어쓰기
+    async def _send(self, data):
+        # 바이트면 send_bytes, 아니면 send_text
+        if isinstance(data, (bytes, bytearray)):
+            await self.send_bytes(data)
+        else:
+            # 만약 data가 bytes 타입으로 와도 str로 변환해서 넘기고 싶으면 .decode() 사용
+            await self.send_text(data)
+    websocket.send = MethodType(_send, websocket)
+
+    # 3) 방(room) 생성/등록
+    websocket_server.rooms.setdefault(room_name, FileBackedYRoom(room_name))
+
+    # 4) serve 호출
     try:
-        # WebsocketServer의 get_room 메서드를 사용하여 room 가져오기
-        if room_name not in websocket_server.rooms:
-            websocket_server.rooms[room_name] = FileBackedYRoom(room_name)
-        
-        # pycrdt-websocket의 serve 메서드 사용
-        await websocket_server.serve(websocket, room_name)
+        await websocket_server.serve(websocket)
     except WebSocketDisconnect:
-        logger.info(f"Client disconnected from {room_name}")
-    except Exception as e:
-        logger.error(f"WebSocket error in {room_name}: {e}")
+        logger.info(f"Client disconnected: {room_name}")
+    except Exception:
+        logger.exception(f"WebSocket error in {room_name}")
 
-#메인 실행
-
+# 메인 실행
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False, log_level="info")
-
