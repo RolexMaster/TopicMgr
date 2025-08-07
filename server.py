@@ -78,7 +78,8 @@ class FileBackedYRoom(YRoom):
 
 
 # CRDT 서버 인스턴스
-websocket_server = WebsocketServer(auto_clean_rooms=False)
+# 수정할 코드 1
+websocket_server = WebsocketServer(rooms_factory=FileBackedYRoom, auto_clean_rooms=False)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -204,32 +205,27 @@ async def crdt_page(request: Request, room: Optional[str] = None):
         "websocket_port": request.url.port or 8000
     })
 
+# 수정할 코드 2
 @app.websocket("/ws/{room_name:path}")
 async def websocket_endpoint(websocket: WebSocket, room_name: str):
-    await websocket.accept()
-    # 1) 라이브러리가 기대하는 path 속성 붙이기
+    async def _send(data):
+        await websocket.send_bytes(data)
+
+    async def _recv():
+        message = await websocket.receive()
+        return message.get("bytes")
+
+    websocket.send = _send
+    websocket.recv = _recv
     websocket.path = websocket.scope["path"]
-    
-    # 2) Starlette WebSocket.send를 어댑터로 덮어쓰기
-    async def _send(self, data):
-        # 바이트면 send_bytes, 아니면 send_text
-        if isinstance(data, (bytes, bytearray)):
-            await self.send_bytes(data)
-        else:
-            # 만약 data가 bytes 타입으로 와도 str로 변환해서 넘기고 싶으면 .decode() 사용
-            await self.send_text(data)
-    websocket.send = MethodType(_send, websocket)
 
-    # 3) 방(room) 생성/등록
-    websocket_server.rooms.setdefault(room_name, FileBackedYRoom(room_name))
-
-    # 4) serve 호출
     try:
         await websocket_server.serve(websocket)
     except WebSocketDisconnect:
-        logger.info(f"Client disconnected: {room_name}")
+        logger.info(f"Client disconnected from room: {room_name}")
     except Exception:
-        logger.exception(f"WebSocket error in {room_name}")
+        logger.exception(f"WebSocket error in room: {room_name}")
+
 
 # 메인 실행
 if __name__ == "__main__":
