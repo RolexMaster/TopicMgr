@@ -114,20 +114,54 @@ class YRoom:
     
     async def handle_message(self, websocket, message: bytes):
         """Handle incoming message"""
-        # For mock implementation, just broadcast to all clients
+        # Check if this is a y-websocket protocol message
+        if len(message) > 0:
+            message_type = message[0]
+            
+            # Y-websocket protocol message types
+            SYNC_STEP1 = 0
+            SYNC_STEP2 = 1
+            SYNC_UPDATE = 2
+            AWARENESS = 1
+            
+            if message_type == SYNC_STEP1:
+                # Client requesting sync, send sync step 2
+                logger.info(f"Received sync step 1 from client in room {self.name}")
+                # Create a minimal sync step 2 response
+                response = bytes([SYNC_STEP2, 0])  # Empty doc state
+                await websocket.send(response)
+                return
+            elif message_type == SYNC_STEP2:
+                # Client sync response
+                logger.info(f"Received sync step 2 from client in room {self.name}")
+                return
+            elif message_type == SYNC_UPDATE:
+                # Document update, broadcast to other clients
+                logger.info(f"Received document update in room {self.name}")
+            elif message_type == AWARENESS:
+                # Awareness update
+                logger.info(f"Received awareness update in room {self.name}")
+        
+        # Broadcast to all other clients
         for client in self.clients:
-            if client != websocket and client.client_state.open:
+            if client != websocket:
                 try:
-                    await client.send(message)
-                except:
-                    pass
+                    if hasattr(client, 'client_state') and client.client_state.open:
+                        await client.send(message)
+                    elif hasattr(client, 'state') and client.state == 1:  # WebSocket.State.OPEN
+                        await client.send(message)
+                except Exception as e:
+                    logger.error(f"Error broadcasting message: {e}")
         
         # Call registered callbacks
         for callback in self._on_message_callbacks:
-            if asyncio.iscoroutinefunction(callback):
-                await callback(message)
-            else:
-                callback(message)
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(message)
+                else:
+                    callback(message)
+            except Exception as e:
+                logger.error(f"Error in message callback: {e}")
 
 
 class WebsocketServer:
