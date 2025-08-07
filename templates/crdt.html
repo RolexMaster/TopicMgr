@@ -578,89 +578,123 @@
         }
         
         // jsTree 초기화
-        function initializeTree() {
-            $('#tree-container').jstree({
-                'core': {
-                    'data': [{
-                        'id': 'root',
-                        'text': 'Applications',
-                        'icon': 'fa fa-cube',
-                        'state': { 'opened': true },
-                        'type': 'root'
-                    }],
-                    'check_callback': true,
-                    'themes': {
-                        'responsive': true
-                    }
-                },
-                'types': {
-                    'root': {
-                        'icon': 'fa fa-cube'
-                    },
-                    'applicationGroup': {
-                        'icon': 'fa fa-folder'
-                    },
-                    'application': {
-                        'icon': 'fa fa-file-code'
-                    },
-                    'topic': {
-                        'icon': 'fa fa-exchange-alt'
-                    }
-                },
-                'plugins': ['types', 'dnd', 'contextmenu'],
-                'contextmenu': {
-                    'items': function(node) {
-                        const items = {};
-                        
-                        if (node.type === 'root' || node.type === 'applicationGroup') {
-                            items.addGroup = {
-                                'label': 'ApplicationGroup 추가',
-                                'action': function() {
-                                    if (node.type === 'root') {
-                                        addApplicationGroup();
-                                    }
-                                }
-                            };
+function initializeTree() {
+    $('#tree-container').jstree({
+        'core': {
+            'data': [{
+                'id': 'root',
+                'text': 'Applications',
+                'icon': 'fa fa-cube',
+                'state': { 'opened': true },
+                'type': 'root'
+            }],
+            'check_callback': true,
+            'themes': {
+                'responsive': true
+            }
+        },
+        'types': {
+            'root': {
+                'icon': 'fa fa-cube'
+            },
+            'applicationGroup': {
+                'icon': 'fa fa-folder'
+            },
+            'application': {
+                'icon': 'fa fa-file-code'
+            },
+            'topic': {
+                'icon': 'fa fa-exchange-alt'
+            }
+        },
+        'plugins': ['types', 'dnd', 'contextmenu'],
+        'contextmenu': {
+            'items': function(node) {
+                const items = {};
+                
+                if (node.type === 'root' || node.type === 'applicationGroup') {
+                    items.addGroup = {
+                        'label': 'ApplicationGroup 추가',
+                        'action': function() {
+                            if (node.type === 'root') {
+                                addApplicationGroup();
+                            }
                         }
-                        
-                        if (node.type === 'applicationGroup') {
-                            items.addApp = {
-                                'label': 'Application 추가',
-                                'action': function() {
-                                    addApplication(node.id);
-                                }
-                            };
-                        }
-                        
-                        if (node.type === 'application') {
-                            items.addTopic = {
-                                'label': 'Topic 추가',
-                                'action': function() {
-                                    addTopic(node.id);
-                                }
-                            };
-                        }
-                        
-                        if (node.type !== 'root') {
-                            items.edit = {
-                                'label': '편집',
-                                'action': function() {
-                                    editNode(node);
-                                }
-                            };
-                            
-                            items.delete = {
-                                'label': '삭제',
-                                'action': function() {
-                                    deleteNode(node.id);
-                                }
-                            };
-                        }
-                        
-                        return items;
-                    }
+                    };
                 }
-            });
+                
+                if (node.type === 'applicationGroup') {
+                    items.addApp = {
+                        'label': 'Application 추가',
+                        'action': function() {
+                            addApplication(node.id);
+                        }
+                    };
+                }
+                
+                if (node.type === 'application') {
+                    items.addTopic = {
+                        'label': 'Topic 추가',
+                        'action': function() {
+                            addTopic(node.id);
+                        }
+                    };
+                }
+                
+                if (node.type !== 'root') {
+                    items.edit = {
+                        'label': '편집',
+                        'action': function() {
+                            editNode(node);
+                        }
+                    };
+                    
+                    items.delete = {
+                        'label': '삭제',
+                        'action': function() {
+                            deleteNode(node.id);
+                        }
+                    };
+                }
+                
+                return items;
+            }
+        }
+    });
+    
+    jstreeInstance = $('#tree-container').jstree(true);
+    
+    // ==========================================================
+    // ===== 수정된 부분: 구조 변경 이벤트 리스너들로 교체 ======
+    // ==========================================================
+    $('#tree-container')
+        .on('create_node.jstree', function(e, data) {
+            console.log('노드 생성됨, 미리보기 업데이트');
+            updateXMLPreview();
+        })
+        .on('rename_node.jstree', function(e, data) {
+            console.log('노드 이름 변경됨, 미리보기 업데이트');
+            updateXMLPreview();
+        })
+        .on('delete_node.jstree', function(e, data) {
+            console.log('노드 삭제됨, 미리보기 업데이트');
+            updateXMLPreview();
+        })
+        .on('move_node.jstree', function(e, data) {
+            console.log('노드 이동됨, 미리보기 업데이트');
+            // 공유 데이터 업데이트는 그대로 유지
+            if (!isLocalChange) {
+                isLocalChange = true;
+                updateSharedData();
+                isLocalChange = false;
+            }
+            updateXMLPreview();
+        });
+    // ==========================================================
+    // ==================== 수정 끝 =============================
+    // ==========================================================
+}
+
             
             jstreeInstance = $('#tree-container').jstree(true);
             
