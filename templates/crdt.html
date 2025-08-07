@@ -664,19 +664,35 @@
             
             jstreeInstance = $('#tree-container').jstree(true);
             
-            // 트리 변경 이벤트 리스너
-            $('#tree-container').on('changed.jstree', function(e, data) {
-                updateXMLPreview();
-            });
-            
-            // 드래그 앤 드롭 이벤트
-            $('#tree-container').on('move_node.jstree', function(e, data) {
-                if (!isLocalChange) {
-                    isLocalChange = true;
-                    updateSharedData();
-                    isLocalChange = false;
-                }
-            });
+            // ==========================================================
+            // ===== 수정된 부분: 구조 변경 이벤트 리스너들로 교체 ======
+            // ==========================================================
+            $('#tree-container')
+                .on('create_node.jstree', function(e, data) {
+                    console.log('노드 생성됨, 미리보기 업데이트');
+                    updateXMLPreview();
+                })
+                .on('rename_node.jstree', function(e, data) {
+                    console.log('노드 이름 변경됨, 미리보기 업데이트');
+                    updateXMLPreview();
+                })
+                .on('delete_node.jstree', function(e, data) {
+                    console.log('노드 삭제됨, 미리보기 업데이트');
+                    updateXMLPreview();
+                })
+                .on('move_node.jstree', function(e, data) {
+                    console.log('노드 이동됨, 미리보기 업데이트');
+                    // 공유 데이터 업데이트는 그대로 유지
+                    if (!isLocalChange) {
+                        isLocalChange = true;
+                        updateSharedData();
+                        isLocalChange = false;
+                    }
+                    updateXMLPreview();
+                });
+            // ==========================================================
+            // ==================== 수정 끝 =============================
+            // ==========================================================
         }
         
         // ApplicationGroup 추가
