@@ -696,23 +696,6 @@ function initializeTree() {
 }
 
             
-            jstreeInstance = $('#tree-container').jstree(true);
-            
-            // 트리 변경 이벤트 리스너
-            $('#tree-container').on('changed.jstree', function(e, data) {
-                updateXMLPreview();
-            });
-            
-            // 드래그 앤 드롭 이벤트
-            $('#tree-container').on('move_node.jstree', function(e, data) {
-                if (!isLocalChange) {
-                    isLocalChange = true;
-                    updateSharedData();
-                    isLocalChange = false;
-                }
-            });
-        }
-        
         // ApplicationGroup 추가
         function addApplicationGroup() {
             const groupName = prompt('ApplicationGroup 이름을 입력하세요:');
