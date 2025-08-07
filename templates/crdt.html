@@ -1089,7 +1089,10 @@
                 ymap = ydoc.getMap('treeData');
                 
                 // WebSocket provider 설정
-                const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/crdt`;
+                // const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/crdt`;
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.host;
+                const wsUrl = `${protocol}//${host}/ws/${roomName}`;
                 provider = new WebsocketProvider(wsUrl, roomName, ydoc);
                 
                 // 연결 상태 이벤트
