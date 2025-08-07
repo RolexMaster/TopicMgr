@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CRDT 협업 문서 편집기</title>
+    <title>CRDT XML 협업 편집기</title>
     <style>
         * {
             box-sizing: border-box;
@@ -19,7 +19,7 @@
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -169,121 +169,105 @@
             }
         }
         
-        .todo-section {
+        .xml-editor-section {
             margin-top: 20px;
         }
         
-        .todo-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        
-        .todo-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #2c3e50;
-        }
-        
-        .todo-input-container {
+        .editor-toolbar {
             display: flex;
             gap: 10px;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
         }
         
-        .todo-input {
-            flex: 1;
-            padding: 10px 14px;
-            border: 2px solid #e1e8ed;
-            border-radius: 6px;
-            font-size: 15px;
-            transition: border-color 0.3s;
+        .toolbar-button {
+            background-color: #ecf0f1;
+            color: #2c3e50;
+            border: 1px solid #bdc3c7;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
         }
         
-        .todo-input:focus {
-            outline: none;
+        .toolbar-button:hover {
+            background-color: #3498db;
+            color: white;
             border-color: #3498db;
         }
         
-        .add-button {
-            background-color: #27ae60;
-            color: white;
-            border: none;
-            padding: 10px 20px;
+        .toolbar-button:active {
+            transform: translateY(1px);
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+        
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+        
+        .xml-editor-wrapper {
+            border: 2px solid #e1e8ed;
             border-radius: 6px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background-color 0.3s;
+            overflow: hidden;
+            position: relative;
         }
         
-        .add-button:hover {
-            background-color: #229954;
-        }
-        
-        .todo-list {
-            list-style: none;
-            padding: 0;
-        }
-        
-        .todo-item {
+        .line-numbers {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 50px;
             background-color: #f8f9fa;
-            border: 1px solid #e1e8ed;
-            border-radius: 6px;
-            padding: 14px 18px;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        
-        .todo-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
-        
-        .todo-checkbox {
-            margin-right: 12px;
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-        
-        .todo-text {
-            flex: 1;
-            color: #333;
-        }
-        
-        .todo-completed .todo-text {
-            text-decoration: line-through;
+            border-right: 1px solid #e1e8ed;
+            padding: 10px 5px;
+            text-align: right;
             color: #95a5a6;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            user-select: none;
         }
         
-        .delete-button {
-            background-color: #e74c3c;
-            color: white;
+        #xmlEditor {
+            width: 100%;
+            min-height: 500px;
+            padding: 10px;
+            padding-left: 60px;
             border: none;
-            padding: 6px 12px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: vertical;
+            white-space: pre;
+            overflow-wrap: normal;
+            overflow-x: auto;
+        }
+        
+        .validation-status {
+            margin-top: 10px;
+            padding: 10px;
             border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
-            transition: background-color 0.3s;
+            font-size: 14px;
+            display: none;
         }
         
-        .delete-button:hover {
-            background-color: #c0392b;
+        .validation-valid {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
         }
         
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #95a5a6;
-        }
-        
-        .empty-state-icon {
-            font-size: 3rem;
-            margin-bottom: 10px;
+        .validation-invalid {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
         }
         
         .leave-button {
@@ -315,8 +299,8 @@
 <body>
     <header>
         <div class="container">
-            <h1>CRDT 협업 문서 편집기</h1>
-            <p class="subtitle">Yjs + pycrdt-websocket 기반 실시간 동기화</p>
+            <h1>CRDT XML 협업 편집기</h1>
+            <p class="subtitle">Yjs + pycrdt-websocket 기반 실시간 XML 동기화</p>
         </div>
     </header>
     
@@ -351,32 +335,25 @@
                 <button onclick="leaveRoom()" class="leave-button">나가기</button>
             </div>
             
-            <div class="todo-section">
-                <div class="todo-header">
-                    <h3 class="todo-title">할 일 목록</h3>
-                    <span id="todoCount" style="color: #7f8c8d; font-size: 14px;">0개 항목</span>
+            <div class="xml-editor-section">
+                <div class="editor-toolbar">
+                    <button class="toolbar-button" onclick="formatXML()">XML 정리</button>
+                    <button class="toolbar-button" onclick="validateXML()">유효성 검사</button>
+                    <button class="toolbar-button" onclick="clearEditor()">비우기</button>
+                    <div class="file-input-wrapper">
+                        <button class="toolbar-button">XML 업로드</button>
+                        <input type="file" id="fileInput" accept=".xml" onchange="loadXMLFile(event)">
+                    </div>
+                    <button class="toolbar-button" onclick="downloadXML()">XML 다운로드</button>
+                    <button class="toolbar-button" onclick="insertSampleXML()">샘플 XML</button>
                 </div>
                 
-                <div class="todo-input-container">
-                    <input 
-                        type="text" 
-                        id="todoInput" 
-                        class="todo-input" 
-                        placeholder="새로운 할 일을 입력하세요"
-                        onkeypress="handleTodoKeyPress(event)"
-                    >
-                    <button onclick="console.log('버튼 클릭됨'); addTodo()" class="add-button">추가</button>
+                <div class="xml-editor-wrapper">
+                    <div class="line-numbers" id="lineNumbers">1</div>
+                    <textarea id="xmlEditor" placeholder="XML 내용을 입력하세요..." spellcheck="false"></textarea>
                 </div>
                 
-                <ul id="todoList" class="todo-list">
-                    <!-- 할 일 목록이 여기에 표시됩니다 -->
-                </ul>
-                
-                <div id="emptyState" class="empty-state" style="display: none;">
-                    <div class="empty-state-icon">📝</div>
-                    <p>아직 할 일이 없습니다.</p>
-                    <p style="font-size: 14px; margin-top: 5px;">위에서 새로운 할 일을 추가해보세요!</p>
-                </div>
+                <div id="validationStatus" class="validation-status"></div>
             </div>
         </div>
     </div>
@@ -402,16 +379,17 @@
         // 전역 변수
         let ydoc = null;
         let provider = null;
-        let todos = null;
+        let ytext = null;
         let currentRoom = null;
         let Y = null;
         let WebsocketProvider = null;
+        let isLocalChange = false;
         
         // URL 파라미터에서 room 이름 가져오기
         const urlParams = new URLSearchParams(window.location.search);
         const roomFromUrl = urlParams.get('room');
         
-        // 에러 메시지 표시 함수 (라이브러리 로드 전에도 사용 가능하도록)
+        // 에러 메시지 표시 함수
         function showError(message) {
             const errorElement = document.getElementById('errorMessage');
             if (errorElement) {
@@ -424,9 +402,8 @@
             }
         }
         
-        // 라이브러리가 로드될 때까지 대기하는 함수 (ESM 모듈 버전)
+        // 라이브러리가 로드될 때까지 대기하는 함수
         function waitForLibraries(callback) {
-            // 이미 로드되었는지 확인
             if (window.Y && window.WebsocketProvider) {
                 Y = window.Y;
                 WebsocketProvider = window.WebsocketProvider;
@@ -435,8 +412,6 @@
                 return;
             }
             
-            // modules-loaded 이벤트 대기
-            console.log('모듈 로드 이벤트 대기 중...');
             window.addEventListener('modules-loaded', function onModulesLoaded() {
                 window.removeEventListener('modules-loaded', onModulesLoaded);
                 
@@ -451,10 +426,9 @@
                 }
             });
             
-            // 타임아웃 설정 (15초)
             setTimeout(() => {
                 if (!window.Y || !window.WebsocketProvider) {
-                    console.error('라이브러리 로드 시간 초과 (15초)');
+                    console.error('라이브러리 로드 시간 초과');
                     showError('라이브러리 로드가 너무 오래 걸립니다. 네트워크 상태를 확인하고 페이지를 새로고침해주세요.');
                 }
             }, 15000);
@@ -463,78 +437,61 @@
         // 페이지 로드 시 실행
         function initializeApp() {
             console.log('페이지 로드됨, roomFromUrl:', roomFromUrl);
-            console.log('라이브러리 로드 상태 확인 중...');
-            console.log('현재 Yjs 상태:', typeof window.Y);
-            console.log('현재 WebsocketProvider 상태:', typeof window.WebsocketProvider);
             
-            // 로딩 메시지 표시
-            const loadingMessage = document.createElement('div');
-            loadingMessage.id = 'loadingMessage';
-            loadingMessage.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #3498db; color: white; padding: 10px 20px; border-radius: 4px; z-index: 1000;';
-            loadingMessage.textContent = '라이브러리를 로드하고 있습니다...';
-            document.body.appendChild(loadingMessage);
-            
-            // 스크립트 태그 상태 확인
-            const scripts = document.getElementsByTagName('script');
-            for (let script of scripts) {
-                if (script.src.includes('yjs') || script.src.includes('websocket')) {
-                    console.log('스크립트 URL:', script.src, '로드 상태:', script.readyState || 'unknown');
-                }
-            }
-            
-            // 라이브러리 로드 대기
             waitForLibraries(() => {
-                // 로딩 메시지 제거
-                if (loadingMessage && loadingMessage.parentNode) {
-                    loadingMessage.parentNode.removeChild(loadingMessage);
-                }
-                console.log('Yjs 라이브러리 로드 완료');
-                
-                // Yjs 라이브러리가 로드되었는지 확인
-                if (!Y) {
-                    console.error('Yjs 라이브러리가 로드되지 않았습니다.');
-                    showError('Yjs 라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
-                    return;
-                }
-                if (!WebsocketProvider) {
-                    console.error('y-websocket 라이브러리가 로드되지 않았습니다.');
-                    showError('y-websocket 라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
+                if (!Y || !WebsocketProvider) {
+                    showError('라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
                     return;
                 }
                 
-                // 추가 버튼에 이벤트 리스너 추가 (백업)
-                const addButton = document.querySelector('.add-button');
-                if (addButton) {
-                    console.log('추가 버튼에 이벤트 리스너 추가');
-                    addButton.addEventListener('click', function(e) {
-                        console.log('추가 버튼 클릭 (이벤트 리스너)');
-                        window.addTodo();
-                    });
-                }
+                // 에디터 이벤트 설정
+                setupEditorEvents();
                 
                 if (roomFromUrl) {
                     document.getElementById('roomNameInput').value = roomFromUrl;
-                    console.log('자동으로 방 입장 시도:', roomFromUrl);
                     joinRoom(new Event('submit'));
                 }
             });
         }
         
-        // DOMContentLoaded와 window.onload 둘 다 사용하여 안정성 향상
+        // DOMContentLoaded 이벤트
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeApp);
         } else {
-            // 이미 DOMContentLoaded가 발생한 경우
             initializeApp();
         }
         
-        // 백업: window.onload 사용
-        window.addEventListener('load', function() {
-            if (!window.Y || !window.WebsocketProvider) {
-                console.log('window.onload에서 라이브러리 재확인');
-                initializeApp();
+        function setupEditorEvents() {
+            const editor = document.getElementById('xmlEditor');
+            
+            // 줄 번호 업데이트
+            editor.addEventListener('input', () => {
+                updateLineNumbers();
+                if (!isLocalChange && ytext) {
+                    isLocalChange = true;
+                    const content = editor.value;
+                    ytext.delete(0, ytext.length);
+                    ytext.insert(0, content);
+                    isLocalChange = false;
+                }
+            });
+            
+            editor.addEventListener('scroll', () => {
+                document.getElementById('lineNumbers').scrollTop = editor.scrollTop;
+            });
+        }
+        
+        function updateLineNumbers() {
+            const editor = document.getElementById('xmlEditor');
+            const lineNumbers = document.getElementById('lineNumbers');
+            const lines = editor.value.split('\n').length;
+            
+            let lineNumbersHtml = '';
+            for (let i = 1; i <= lines; i++) {
+                lineNumbersHtml += i + '\n';
             }
-        });
+            lineNumbers.textContent = lineNumbersHtml;
+        }
         
         window.joinRoom = function(event) {
             event.preventDefault();
@@ -572,19 +529,16 @@
             // 새로운 Y 문서 생성
             ydoc = new Y.Doc();
             
-            // Todo 배열 생성
-            todos = ydoc.getArray('todos');
-            console.log('todos 배열 생성됨:', todos);
+            // XML 텍스트 생성
+            ytext = ydoc.getText('xml');
+            console.log('ytext 생성됨:', ytext);
             
             // WebSocket 연결
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            // Azure App Service에서는 WebSocket이 기본 포트를 통해 프록시됨
             const host = window.location.host;
-            let wsUrl;
-
-            wsUrl = `${protocol}//${host}/ws/${roomName}`;
+            const wsUrl = `${protocol}//${host}/ws/${roomName}`;
+            
             console.log('WebSocket URL:', wsUrl);
-            console.log('Room name:', roomName);
             
             provider = new WebsocketProvider(wsUrl, '', ydoc, {
                 connect: true
@@ -596,23 +550,20 @@
                 updateConnectionStatus(event.status === 'connected');
             });
             
-            // WebSocket 연결 에러 처리
-            provider.on('connection-error', (event) => {
-                console.error('WebSocket 연결 에러:', event);
-                showError('서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
-            });
-            
-            provider.on('connection-close', (event) => {
-                console.warn('WebSocket 연결이 닫혔습니다:', event);
-            });
-            
-            // Todo 목록 변경 감지
-            todos.observe(event => {
-                renderTodos();
+            // 텍스트 변경 감지
+            ytext.observe(event => {
+                if (!isLocalChange) {
+                    isLocalChange = true;
+                    document.getElementById('xmlEditor').value = ytext.toString();
+                    updateLineNumbers();
+                    isLocalChange = false;
+                }
             });
             
             // 초기 렌더링
-            renderTodos();
+            const editor = document.getElementById('xmlEditor');
+            editor.value = ytext.toString();
+            updateLineNumbers();
             
             // 연결 상태 초기화
             setTimeout(() => {
@@ -633,110 +584,196 @@
             }
         }
         
-        window.addTodo = function() {
-            console.log('addTodo 함수 호출됨');
-            const input = document.getElementById('todoInput');
-            if (!input) {
-                console.error('todoInput 요소를 찾을 수 없습니다');
-                return;
-            }
-            const text = input.value.trim();
-            console.log('입력된 텍스트:', text);
-            
-            if (!text) {
-                console.log('텍스트가 비어있음');
-                return;
-            }
-            
-            // todos가 초기화되었는지 확인
-            if (!todos) {
-                console.error('todos가 초기화되지 않았습니다. 먼저 방에 입장해주세요.');
-                showError('먼저 방에 입장해주세요.');
-                return;
-            }
-            console.log('todos 상태:', todos, 'todos 타입:', typeof todos);
+        // XML 포맷팅
+        window.formatXML = function() {
+            const editor = document.getElementById('xmlEditor');
+            const xml = editor.value;
             
             try {
-                // 새 할 일 추가
-                const newTodo = {
-                    id: Date.now().toString(),
-                    text: text,
-                    completed: false,
-                    createdAt: new Date().toISOString()
-                };
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xml, 'text/xml');
                 
-                console.log('todos.push 호출 전');
-                todos.push([newTodo]);
-                console.log('todos.push 호출 후');
-                input.value = '';
-                input.focus();
-                console.log('할 일이 추가되었습니다:', newTodo);
-            } catch (error) {
-                console.error('할 일 추가 중 오류 발생:', error);
-                console.error('오류 스택:', error.stack);
-                showError('할 일 추가 중 오류가 발생했습니다.');
+                if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
+                    showValidationStatus('XML 구문 오류가 있습니다.', false);
+                    return;
+                }
+                
+                const formatted = formatXMLString(xml);
+                editor.value = formatted;
+                
+                if (ytext) {
+                    isLocalChange = true;
+                    ytext.delete(0, ytext.length);
+                    ytext.insert(0, formatted);
+                    isLocalChange = false;
+                }
+                
+                updateLineNumbers();
+                showValidationStatus('XML이 정리되었습니다.', true);
+            } catch (e) {
+                showValidationStatus('XML 포맷팅 오류: ' + e.message, false);
             }
         }
         
-        window.handleTodoKeyPress = function(event) {
-            if (event.key === 'Enter') {
-                addTodo();
-            }
+        function formatXMLString(xml) {
+            const PADDING = '  ';
+            let formatted = '';
+            let pad = 0;
+            
+            xml = xml.replace(/(>)(<)(\/*)/g, '$1\n$2$3');
+            xml.split('\n').forEach(node => {
+                let indent = 0;
+                if (node.match(/.+<\/\w[^>]*>$/)) {
+                    indent = 0;
+                } else if (node.match(/^<\/\w/)) {
+                    if (pad !== 0) {
+                        pad -= 1;
+                    }
+                } else if (node.match(/^<\w([^>]*[^\/])?>.*$/)) {
+                    indent = 1;
+                } else {
+                    indent = 0;
+                }
+                
+                const padding = PADDING.repeat(pad);
+                formatted += padding + node + '\n';
+                pad += indent;
+            });
+            
+            return formatted.trim();
         }
         
-        window.toggleTodo = function(index) {
-            const todo = todos.get(index);
-            if (todo) {
-                const updatedTodo = { ...todo, completed: !todo.completed };
-                todos.delete(index, 1);
-                todos.insert(index, [updatedTodo]);
-            }
-        }
-        
-        window.deleteTodo = function(index) {
-            todos.delete(index, 1);
-        }
-        
-        function renderTodos() {
-            const todoList = document.getElementById('todoList');
-            const emptyState = document.getElementById('emptyState');
-            const todoCount = document.getElementById('todoCount');
+        // XML 유효성 검사
+        window.validateXML = function() {
+            const editor = document.getElementById('xmlEditor');
+            const xml = editor.value;
             
-            // 할 일 목록 가져오기
-            const todoArray = todos ? todos.toArray() : [];
-            
-            // 카운트 업데이트
-            todoCount.textContent = `${todoArray.length}개 항목`;
-            
-            // 빈 상태 처리
-            if (todoArray.length === 0) {
-                todoList.style.display = 'none';
-                emptyState.style.display = 'block';
+            if (!xml.trim()) {
+                showValidationStatus('XML 내용이 비어있습니다.', false);
                 return;
             }
             
-            todoList.style.display = 'block';
-            emptyState.style.display = 'none';
-            
-            // 목록 렌더링
-            todoList.innerHTML = todoArray.map((todo, index) => `
-                <li class="todo-item ${todo.completed ? 'todo-completed' : ''}">
-                    <input 
-                        type="checkbox" 
-                        class="todo-checkbox" 
-                        ${todo.completed ? 'checked' : ''} 
-                        onchange="toggleTodo(${index})"
-                    >
-                    <span class="todo-text">${escapeHtml(todo.text)}</span>
-                    <button onclick="deleteTodo(${index})" class="delete-button">삭제</button>
-                </li>
-            `).join('');
+            try {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xml, 'text/xml');
+                
+                if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
+                    const error = xmlDoc.getElementsByTagName('parsererror')[0].textContent;
+                    showValidationStatus('XML 구문 오류: ' + error, false);
+                } else {
+                    showValidationStatus('유효한 XML 문서입니다.', true);
+                }
+            } catch (e) {
+                showValidationStatus('유효성 검사 오류: ' + e.message, false);
+            }
         }
         
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        function showValidationStatus(message, isValid) {
+            const status = document.getElementById('validationStatus');
+            status.textContent = message;
+            status.className = 'validation-status ' + (isValid ? 'validation-valid' : 'validation-invalid');
+            status.style.display = 'block';
+            
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 5000);
+        }
+        
+        // 에디터 비우기
+        window.clearEditor = function() {
+            if (confirm('정말로 모든 내용을 삭제하시겠습니까?')) {
+                const editor = document.getElementById('xmlEditor');
+                editor.value = '';
+                
+                if (ytext) {
+                    isLocalChange = true;
+                    ytext.delete(0, ytext.length);
+                    isLocalChange = false;
+                }
+                
+                updateLineNumbers();
+            }
+        }
+        
+        // XML 파일 로드
+        window.loadXMLFile = function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                const editor = document.getElementById('xmlEditor');
+                editor.value = content;
+                
+                if (ytext) {
+                    isLocalChange = true;
+                    ytext.delete(0, ytext.length);
+                    ytext.insert(0, content);
+                    isLocalChange = false;
+                }
+                
+                updateLineNumbers();
+                showValidationStatus('파일이 로드되었습니다.', true);
+            };
+            reader.readAsText(file);
+        }
+        
+        // XML 다운로드
+        window.downloadXML = function() {
+            const editor = document.getElementById('xmlEditor');
+            const content = editor.value;
+            
+            if (!content.trim()) {
+                showValidationStatus('다운로드할 내용이 없습니다.', false);
+                return;
+            }
+            
+            const blob = new Blob([content], { type: 'text/xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentRoom || 'document'}.xml`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // 샘플 XML 삽입
+        window.insertSampleXML = function() {
+            const sampleXML = `<?xml version="1.0" encoding="UTF-8"?>
+<books>
+  <book id="1">
+    <title>실시간 협업 시스템</title>
+    <author>홍길동</author>
+    <year>2025</year>
+    <price currency="KRW">35000</price>
+    <description>
+      CRDT를 활용한 실시간 협업 시스템 구축 가이드
+    </description>
+  </book>
+  <book id="2">
+    <title>분산 시스템의 이해</title>
+    <author>김철수</author>
+    <year>2024</year>
+    <price currency="KRW">42000</price>
+    <description>
+      현대적인 분산 시스템 아키텍처와 구현 방법
+    </description>
+  </book>
+</books>`;
+            
+            const editor = document.getElementById('xmlEditor');
+            editor.value = sampleXML;
+            
+            if (ytext) {
+                isLocalChange = true;
+                ytext.delete(0, ytext.length);
+                ytext.insert(0, sampleXML);
+                isLocalChange = false;
+            }
+            
+            updateLineNumbers();
+            formatXML();
         }
         
         window.leaveRoom = function() {
@@ -754,12 +791,14 @@
             document.getElementById('roomSelector').style.display = 'block';
             document.getElementById('editorContainer').style.display = 'none';
             document.getElementById('roomNameInput').value = '';
-            document.getElementById('todoInput').value = '';
+            document.getElementById('xmlEditor').value = '';
             
             // 변수 초기화
             ydoc = null;
-            todos = null;
+            ytext = null;
             currentRoom = null;
+            
+            updateLineNumbers();
         }
         
         // 페이지 언로드 시 정리
