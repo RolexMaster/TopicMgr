@@ -19,12 +19,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import uvicorn
 import websockets
-try:
-    from pycrdt import Doc
-    from pycrdt_websocket import WebsocketServer, YRoom
-except ImportError:
-    # Use mock implementation if pycrdt is not available
-    from pycrdt_mock import Doc, WebsocketServer, YRoom
+from pycrdt import Doc
+from pycrdt_websocket import WebsocketServer, YRoom
 
 # 로깅 설정
 logging.basicConfig(
@@ -214,14 +210,9 @@ class WebSocketBridge:
 
 
 # 전역 WebSocket 서버 인스턴스
-try:
-    # Try with auto_clean_rooms parameter (for real pycrdt)
-    websocket_server = CRDTWebSocketServer(
-        auto_clean_rooms=False
-    )
-except TypeError:
-    # Fall back to simple initialization (for mock)
-    websocket_server = CRDTWebSocketServer()
+websocket_server = CRDTWebSocketServer(
+    auto_clean_rooms=False
+)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -303,12 +294,7 @@ async def websocket_endpoint(websocket: WebSocket, room_name: str):
     
     try:
         # pycrdt-websocket 서버와 연결
-        if hasattr(websocket_server, 'handle_websocket'):
-            # Mock implementation
-            await websocket_server.handle_websocket(bridge, f"/{room_name}")
-        else:
-            # Real pycrdt-websocket
-            await websocket_server.serve(bridge)
+        await websocket_server.serve(bridge)
     except WebSocketDisconnect:
         logger.info(f"Client disconnected from room: {room_name}")
     except Exception as e:

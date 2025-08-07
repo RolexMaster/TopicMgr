@@ -4,12 +4,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
-try:
-    from pycrdt import Doc
-    from pycrdt_websocket import WebsocketServer, YRoom
-except ImportError:
-    # Use mock implementation if pycrdt is not available
-    from pycrdt_mock import Doc, WebsocketServer, YRoom
+from pycrdt import Doc
+from pycrdt_websocket import WebsocketServer, YRoom
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
