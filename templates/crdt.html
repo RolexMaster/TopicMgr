@@ -762,26 +762,28 @@
         // 샘플 XML 삽입
         window.insertSampleXML = function() {
             const sampleXML = `<?xml version="1.0" encoding="UTF-8"?>
-<books>
-  <book id="1">
-    <title>실시간 협업 시스템</title>
-    <author>홍길동</author>
-    <year>2025</year>
-    <price currency="KRW">35000</price>
-    <description>
-      CRDT를 활용한 실시간 협업 시스템 구축 가이드
-    </description>
-  </book>
-  <book id="2">
-    <title>분산 시스템의 이해</title>
-    <author>김철수</author>
-    <year>2024</year>
-    <price currency="KRW">42000</price>
-    <description>
-      현대적인 분산 시스템 아키텍처와 구현 방법
-    </description>
-  </book>
-</books>`;
+<Applications>
+  <ApplicationGroup name="OperationSW">
+    <Application name="GUI_PTZ">
+      <Topic name="PTZ_CONTROL" proto="ptz_ctl.proto" direction="publish"/>
+      <Topic name="PTZ_STATUS" proto="ptz_info.proto" direction="subscribe"/>
+    </Application>
+  </ApplicationGroup>
+
+  <ApplicationGroup name="AISW">
+    <Application name="AITracker">
+      <Topic name="DETECTED_OBJECT" proto="detected_object.proto" direction="publish"/>
+      <Topic name="INTEREST_TARGET" proto="interest_target.proto" direction="subscribe"/>
+    </Application>
+  </ApplicationGroup>
+
+  <ApplicationGroup name="SensorSW">
+    <Application name="IFRadar">
+      <Topic name="RADAR_TRACK" proto="radar_track.proto" direction="publish"/>
+      <Topic name="RADAR_STATUS" proto="radar_status.proto" direction="subscribe"/>
+    </Application>
+  </ApplicationGroup>
+</Applications>`;
             
             const editor = document.getElementById('xmlEditor');
             editor.value = sampleXML;
