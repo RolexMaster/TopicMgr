@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CRDT XML 협업 편집기</title>
+    <title>CRDT XML GUI 협업 편집기</title>
+    
+    <!-- jsTree CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.12/themes/default/style.min.css" />
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <style>
         * {
             box-sizing: border-box;
@@ -19,7 +26,7 @@
         }
         
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -104,9 +111,9 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
             padding-bottom: 20px;
-            border-bottom: 2px solid #e1e8ed;
+            border-bottom: 1px solid #e1e8ed;
         }
         
         .room-info {
@@ -116,7 +123,7 @@
         }
         
         .room-name {
-            font-size: 1.25rem;
+            font-size: 18px;
             font-weight: 600;
             color: #2c3e50;
         }
@@ -128,67 +135,70 @@
             padding: 6px 12px;
             border-radius: 20px;
             font-size: 14px;
-            font-weight: 500;
+        }
+        
+        .connection-status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .connection-status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
         }
         
         .status-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            animation: pulse 2s infinite;
+            background-color: currentColor;
         }
         
-        .connected {
-            background-color: #e8f5e9;
-            color: #2e7d32;
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            height: 600px;
         }
         
-        .connected .status-dot {
-            background-color: #4caf50;
+        .editor-panel {
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
         }
         
-        .disconnected {
-            background-color: #ffebee;
-            color: #c62828;
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e1e8ed;
         }
         
-        .disconnected .status-dot {
-            background-color: #f44336;
-            animation: none;
+        .panel-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2c3e50;
         }
         
-        @keyframes pulse {
-            0% {
-                opacity: 1;
-            }
-            50% {
-                opacity: 0.5;
-            }
-            100% {
-                opacity: 1;
-            }
-        }
-        
-        .xml-editor-section {
-            margin-top: 20px;
-        }
-        
-        .editor-toolbar {
+        .toolbar {
             display: flex;
             gap: 10px;
             margin-bottom: 15px;
-            flex-wrap: wrap;
         }
         
         .toolbar-button {
             background-color: #ecf0f1;
-            color: #2c3e50;
+            color: #34495e;
             border: 1px solid #bdc3c7;
             padding: 8px 16px;
             border-radius: 4px;
             font-size: 14px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s;
         }
         
         .toolbar-button:hover {
@@ -197,77 +207,136 @@
             border-color: #3498db;
         }
         
-        .toolbar-button:active {
-            transform: translateY(1px);
+        .toolbar-button.primary {
+            background-color: #3498db;
+            color: white;
+            border-color: #3498db;
         }
         
-        .file-input-wrapper {
-            position: relative;
-            overflow: hidden;
-            display: inline-block;
+        .toolbar-button.primary:hover {
+            background-color: #2980b9;
         }
         
-        .file-input-wrapper input[type=file] {
-            position: absolute;
-            left: -9999px;
+        .toolbar-button.danger {
+            background-color: #e74c3c;
+            color: white;
+            border-color: #e74c3c;
         }
         
-        .xml-editor-wrapper {
-            border: 2px solid #e1e8ed;
-            border-radius: 6px;
-            overflow: hidden;
-            position: relative;
+        .toolbar-button.danger:hover {
+            background-color: #c0392b;
         }
         
-        .line-numbers {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 50px;
-            background-color: #f8f9fa;
-            border-right: 1px solid #e1e8ed;
-            padding: 10px 5px;
-            text-align: right;
-            color: #95a5a6;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 14px;
-            line-height: 1.5;
-            user-select: none;
-        }
-        
-        #xmlEditor {
-            width: 100%;
-            min-height: 500px;
+        #tree-container {
+            flex: 1;
+            overflow: auto;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
             padding: 10px;
-            padding-left: 60px;
-            border: none;
+            background-color: #fafafa;
+        }
+        
+        #xml-preview {
+            flex: 1;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             font-size: 14px;
             line-height: 1.5;
-            resize: vertical;
+            overflow: auto;
             white-space: pre;
-            overflow-wrap: normal;
-            overflow-x: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            padding: 15px;
         }
         
-        .validation-status {
-            margin-top: 10px;
-            padding: 10px;
+        .property-editor {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 1000;
+            display: none;
+            min-width: 400px;
+        }
+        
+        .property-editor h3 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+        
+        .btn-secondary {
+            background-color: #95a5a6;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #7f8c8d;
+        }
+        
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
             display: none;
-        }
-        
-        .validation-valid {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .validation-invalid {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            z-index: 999;
         }
         
         .leave-button {
@@ -295,9 +364,26 @@
             display: none;
         }
         
-        /* XML 구문 하이라이팅 스타일 */
+        /* Custom jsTree styles */
+        .jstree-default .jstree-icon.application-group-icon {
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%233498db"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>') center center no-repeat;
+            background-size: 16px 16px;
+        }
+        
+        .jstree-default .jstree-icon.application-icon {
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232ecc71"><path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg>') center center no-repeat;
+            background-size: 16px 16px;
+        }
+        
+        .jstree-default .jstree-icon.topic-icon {
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23e74c3c"><path d="M20 6h-2.18c.11-.31.18-.65.18-1a2.996 2.996 0 00-5.5-1.65l-.5.67-.5-.68C10.96 2.54 10.05 2 9 2 7.34 2 6 3.34 6 5c0 .35.07.69.18 1H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-5-2c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM9 4c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>') center center no-repeat;
+            background-size: 16px 16px;
+        }
+        
+        /* XML 구문 하이라이팅 */
         .xml-tag {
             color: #e74c3c;
+            font-weight: bold;
         }
         
         .xml-attribute {
@@ -312,36 +398,26 @@
             color: #95a5a6;
             font-style: italic;
         }
-        
-        .xml-cdata {
-            color: #9b59b6;
-        }
-        
-        .xml-text {
-            color: #2c3e50;
-        }
     </style>
 </head>
 <body>
-    <header>
-        <div class="container">
-            <h1>CRDT XML 협업 편집기</h1>
-            <p class="subtitle">Yjs + pycrdt-websocket 기반 실시간 XML 동기화</p>
-        </div>
-    </header>
-    
     <div class="container">
+        <header>
+            <h1>XML GUI 협업 편집기</h1>
+            <p class="subtitle">Applications XML 구조를 GUI로 편집하고 실시간으로 협업하세요</p>
+        </header>
+        
         <!-- Room 선택 화면 -->
         <div id="roomSelector" class="room-selector">
-            <h2 style="text-align: center; margin-bottom: 20px;">Room 입장하기</h2>
+            <h2 style="text-align: center; margin-bottom: 20px;">협업 Room 입장</h2>
             <form class="room-form" onsubmit="joinRoom(event)">
                 <input 
                     type="text" 
-                    id="roomNameInput" 
+                    id="roomName" 
                     class="room-input" 
                     placeholder="Room 이름을 입력하세요" 
                     required
-                    value="{{ room_name or '' }}"
+                    autocomplete="off"
                 >
                 <button type="submit" class="join-button">입장하기</button>
             </form>
@@ -361,28 +437,75 @@
                 <button onclick="leaveRoom()" class="leave-button">나가기</button>
             </div>
             
-            <div class="xml-editor-section">
-                <div class="editor-toolbar">
-                    <button class="toolbar-button" onclick="formatXML()">XML 정리</button>
-                    <button class="toolbar-button" onclick="validateXML()">유효성 검사</button>
-                    <button class="toolbar-button" onclick="clearEditor()">비우기</button>
-                    <div class="file-input-wrapper">
-                        <button class="toolbar-button">XML 업로드</button>
-                        <input type="file" id="fileInput" accept=".xml" onchange="loadXMLFile(event)">
+            <div class="main-content">
+                <!-- 트리 편집기 패널 -->
+                <div class="editor-panel">
+                    <div class="panel-header">
+                        <h3 class="panel-title">XML 구조 편집기</h3>
                     </div>
-                    <button class="toolbar-button" onclick="downloadXML()">XML 다운로드</button>
-                    <button class="toolbar-button" onclick="insertSampleXML()">샘플 XML</button>
+                    <div class="toolbar">
+                        <button class="toolbar-button primary" onclick="addApplicationGroup()">
+                            <i class="fas fa-folder-plus"></i> 그룹 추가
+                        </button>
+                        <button class="toolbar-button" onclick="expandAll()">
+                            <i class="fas fa-expand"></i> 모두 펼치기
+                        </button>
+                        <button class="toolbar-button" onclick="collapseAll()">
+                            <i class="fas fa-compress"></i> 모두 접기
+                        </button>
+                        <button class="toolbar-button danger" onclick="clearAll()">
+                            <i class="fas fa-trash"></i> 전체 삭제
+                        </button>
+                    </div>
+                    <div id="tree-container"></div>
                 </div>
                 
-                <div class="xml-editor-wrapper">
-                    <div class="line-numbers" id="lineNumbers">1</div>
-                    <textarea id="xmlEditor" placeholder="XML 내용을 입력하세요..." spellcheck="false"></textarea>
+                <!-- XML 미리보기 패널 -->
+                <div class="editor-panel">
+                    <div class="panel-header">
+                        <h3 class="panel-title">XML 미리보기</h3>
+                        <button class="toolbar-button" onclick="downloadXML()">
+                            <i class="fas fa-download"></i> 다운로드
+                        </button>
+                    </div>
+                    <div id="xml-preview"></div>
                 </div>
-                
-                <div id="validationStatus" class="validation-status"></div>
             </div>
         </div>
     </div>
+    
+    <!-- 속성 편집 모달 -->
+    <div class="overlay" id="overlay" onclick="closePropertyEditor()"></div>
+    <div class="property-editor" id="propertyEditor">
+        <h3 id="editorTitle">속성 편집</h3>
+        <form id="propertyForm">
+            <div class="form-group">
+                <label for="nodeName">이름</label>
+                <input type="text" id="nodeName" required>
+            </div>
+            <div class="form-group" id="protoGroup" style="display: none;">
+                <label for="nodeProto">Proto 파일</label>
+                <input type="text" id="nodeProto" placeholder="예: ptz_ctl.proto">
+            </div>
+            <div class="form-group" id="directionGroup" style="display: none;">
+                <label for="nodeDirection">방향</label>
+                <select id="nodeDirection">
+                    <option value="publish">publish</option>
+                    <option value="subscribe">subscribe</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closePropertyEditor()">취소</button>
+                <button type="submit" class="btn btn-primary">저장</button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- jQuery (jsTree dependency) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.min.js"></script>
+    
+    <!-- jsTree -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.12/jstree.min.js"></script>
     
     <!-- Yjs 및 y-websocket 라이브러리 모듈로 로드 -->
     <script type="module">
@@ -405,11 +528,13 @@
         // 전역 변수
         let ydoc = null;
         let provider = null;
-        let ytext = null;
+        let ymap = null;
         let currentRoom = null;
         let Y = null;
         let WebsocketProvider = null;
         let isLocalChange = false;
+        let jstreeInstance = null;
+        let currentEditNode = null;
         
         // URL 파라미터에서 room 이름 가져오기
         const urlParams = new URLSearchParams(window.location.search);
@@ -448,150 +573,559 @@
                     callback();
                 } else {
                     console.error('모듈 로드 이벤트를 받았지만 라이브러리가 없습니다');
-                    showError('라이브러리 로드에 실패했습니다. 페이지를 새로고침해주세요.');
-                }
-            });
-            
-            setTimeout(() => {
-                if (!window.Y || !window.WebsocketProvider) {
-                    console.error('라이브러리 로드 시간 초과');
-                    showError('라이브러리 로드가 너무 오래 걸립니다. 네트워크 상태를 확인하고 페이지를 새로고침해주세요.');
-                }
-            }, 15000);
-        }
-        
-        // 페이지 로드 시 실행
-        function initializeApp() {
-            console.log('페이지 로드됨, roomFromUrl:', roomFromUrl);
-            
-            waitForLibraries(() => {
-                if (!Y || !WebsocketProvider) {
-                    showError('라이브러리를 로드할 수 없습니다. 페이지를 새로고침해주세요.');
-                    return;
-                }
-                
-                // 에디터 이벤트 설정
-                setupEditorEvents();
-                
-                if (roomFromUrl) {
-                    document.getElementById('roomNameInput').value = roomFromUrl;
-                    joinRoom(new Event('submit'));
                 }
             });
         }
         
-        // DOMContentLoaded 이벤트
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeApp);
-        } else {
-            initializeApp();
-        }
-        
-        function setupEditorEvents() {
-            const editor = document.getElementById('xmlEditor');
+        // jsTree 초기화
+        function initializeTree() {
+            $('#tree-container').jstree({
+                'core': {
+                    'data': [{
+                        'id': 'root',
+                        'text': 'Applications',
+                        'icon': 'fa fa-cube',
+                        'state': { 'opened': true },
+                        'type': 'root'
+                    }],
+                    'check_callback': true,
+                    'themes': {
+                        'responsive': true
+                    }
+                },
+                'types': {
+                    'root': {
+                        'icon': 'fa fa-cube'
+                    },
+                    'applicationGroup': {
+                        'icon': 'fa fa-folder'
+                    },
+                    'application': {
+                        'icon': 'fa fa-file-code'
+                    },
+                    'topic': {
+                        'icon': 'fa fa-exchange-alt'
+                    }
+                },
+                'plugins': ['types', 'dnd', 'contextmenu'],
+                'contextmenu': {
+                    'items': function(node) {
+                        const items = {};
+                        
+                        if (node.type === 'root' || node.type === 'applicationGroup') {
+                            items.addGroup = {
+                                'label': 'ApplicationGroup 추가',
+                                'action': function() {
+                                    if (node.type === 'root') {
+                                        addApplicationGroup();
+                                    }
+                                }
+                            };
+                        }
+                        
+                        if (node.type === 'applicationGroup') {
+                            items.addApp = {
+                                'label': 'Application 추가',
+                                'action': function() {
+                                    addApplication(node.id);
+                                }
+                            };
+                        }
+                        
+                        if (node.type === 'application') {
+                            items.addTopic = {
+                                'label': 'Topic 추가',
+                                'action': function() {
+                                    addTopic(node.id);
+                                }
+                            };
+                        }
+                        
+                        if (node.type !== 'root') {
+                            items.edit = {
+                                'label': '편집',
+                                'action': function() {
+                                    editNode(node);
+                                }
+                            };
+                            
+                            items.delete = {
+                                'label': '삭제',
+                                'action': function() {
+                                    deleteNode(node.id);
+                                }
+                            };
+                        }
+                        
+                        return items;
+                    }
+                }
+            });
             
-            // 줄 번호 업데이트
-            editor.addEventListener('input', () => {
-                updateLineNumbers();
-                if (!isLocalChange && ytext) {
+            jstreeInstance = $('#tree-container').jstree(true);
+            
+            // 트리 변경 이벤트 리스너
+            $('#tree-container').on('changed.jstree', function(e, data) {
+                updateXMLPreview();
+            });
+            
+            // 드래그 앤 드롭 이벤트
+            $('#tree-container').on('move_node.jstree', function(e, data) {
+                if (!isLocalChange) {
                     isLocalChange = true;
-                    const content = editor.value;
-                    ytext.delete(0, ytext.length);
-                    ytext.insert(0, content);
+                    updateSharedData();
                     isLocalChange = false;
                 }
             });
-            
-            editor.addEventListener('scroll', () => {
-                document.getElementById('lineNumbers').scrollTop = editor.scrollTop;
-            });
         }
         
-        function updateLineNumbers() {
-            const editor = document.getElementById('xmlEditor');
-            const lineNumbers = document.getElementById('lineNumbers');
-            const lines = editor.value.split('\n').length;
-            
-            let lineNumbersHtml = '';
-            for (let i = 1; i <= lines; i++) {
-                lineNumbersHtml += i + '\n';
+        // ApplicationGroup 추가
+        function addApplicationGroup() {
+            const groupName = prompt('ApplicationGroup 이름을 입력하세요:');
+            if (groupName && groupName.trim()) {
+                const nodeId = 'group_' + Date.now();
+                jstreeInstance.create_node('root', {
+                    'id': nodeId,
+                    'text': groupName,
+                    'type': 'applicationGroup',
+                    'data': { 'name': groupName }
+                });
+                
+                if (!isLocalChange) {
+                    isLocalChange = true;
+                    updateSharedData();
+                    isLocalChange = false;
+                }
             }
-            lineNumbers.textContent = lineNumbersHtml;
         }
         
-        window.joinRoom = function(event) {
-            event.preventDefault();
+        // Application 추가
+        function addApplication(parentId) {
+            const appName = prompt('Application 이름을 입력하세요:');
+            if (appName && appName.trim()) {
+                const nodeId = 'app_' + Date.now();
+                jstreeInstance.create_node(parentId, {
+                    'id': nodeId,
+                    'text': appName,
+                    'type': 'application',
+                    'data': { 'name': appName }
+                });
+                
+                if (!isLocalChange) {
+                    isLocalChange = true;
+                    updateSharedData();
+                    isLocalChange = false;
+                }
+            }
+        }
+        
+        // Topic 추가
+        function addTopic(parentId) {
+            currentEditNode = {
+                parentId: parentId,
+                isNew: true
+            };
             
-            const roomName = document.getElementById('roomNameInput').value.trim();
+            document.getElementById('editorTitle').textContent = 'Topic 추가';
+            document.getElementById('nodeName').value = '';
+            document.getElementById('nodeProto').value = '';
+            document.getElementById('nodeDirection').value = 'publish';
+            
+            document.getElementById('protoGroup').style.display = 'block';
+            document.getElementById('directionGroup').style.display = 'block';
+            
+            showPropertyEditor();
+        }
+        
+        // 노드 편집
+        function editNode(node) {
+            currentEditNode = {
+                node: node,
+                isNew: false
+            };
+            
+            document.getElementById('editorTitle').textContent = node.type + ' 편집';
+            document.getElementById('nodeName').value = node.data.name || node.text;
+            
+            if (node.type === 'topic') {
+                document.getElementById('nodeProto').value = node.data.proto || '';
+                document.getElementById('nodeDirection').value = node.data.direction || 'publish';
+                document.getElementById('protoGroup').style.display = 'block';
+                document.getElementById('directionGroup').style.display = 'block';
+            } else {
+                document.getElementById('protoGroup').style.display = 'none';
+                document.getElementById('directionGroup').style.display = 'none';
+            }
+            
+            showPropertyEditor();
+        }
+        
+        // 노드 삭제
+        function deleteNode(nodeId) {
+            if (confirm('정말로 이 노드를 삭제하시겠습니까?')) {
+                jstreeInstance.delete_node(nodeId);
+                
+                if (!isLocalChange) {
+                    isLocalChange = true;
+                    updateSharedData();
+                    isLocalChange = false;
+                }
+            }
+        }
+        
+        // 속성 편집기 표시/숨김
+        function showPropertyEditor() {
+            document.getElementById('overlay').style.display = 'block';
+            document.getElementById('propertyEditor').style.display = 'block';
+        }
+        
+        function closePropertyEditor() {
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('propertyEditor').style.display = 'none';
+            currentEditNode = null;
+        }
+        
+        // 속성 폼 제출 처리
+        document.getElementById('propertyForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('nodeName').value.trim();
+            if (!name) return;
+            
+            if (currentEditNode.isNew) {
+                // 새 Topic 노드 생성
+                const nodeId = 'topic_' + Date.now();
+                const proto = document.getElementById('nodeProto').value.trim();
+                const direction = document.getElementById('nodeDirection').value;
+                
+                jstreeInstance.create_node(currentEditNode.parentId, {
+                    'id': nodeId,
+                    'text': name + ' (' + direction + ')',
+                    'type': 'topic',
+                    'data': {
+                        'name': name,
+                        'proto': proto,
+                        'direction': direction
+                    }
+                });
+            } else {
+                // 기존 노드 업데이트
+                const node = currentEditNode.node;
+                node.data.name = name;
+                
+                if (node.type === 'topic') {
+                    node.data.proto = document.getElementById('nodeProto').value.trim();
+                    node.data.direction = document.getElementById('nodeDirection').value;
+                    jstreeInstance.rename_node(node.id, name + ' (' + node.data.direction + ')');
+                } else {
+                    jstreeInstance.rename_node(node.id, name);
+                }
+            }
+            
+            if (!isLocalChange) {
+                isLocalChange = true;
+                updateSharedData();
+                isLocalChange = false;
+            }
+            
+            closePropertyEditor();
+        });
+        
+        // 트리 데이터를 Yjs 맵에 저장
+        function updateSharedData() {
+            if (!ymap) return;
+            
+            const treeData = jstreeInstance.get_json('#', { flat: false });
+            ymap.set('treeData', JSON.stringify(treeData));
+        }
+        
+        // Yjs 맵에서 트리 데이터 가져와서 업데이트
+        function updateTreeFromShared() {
+            if (!ymap || isLocalChange) return;
+            
+            const treeDataStr = ymap.get('treeData');
+            if (treeDataStr) {
+                try {
+                    const treeData = JSON.parse(treeDataStr);
+                    isLocalChange = true;
+                    
+                    // 현재 트리를 삭제하고 새로 생성
+                    jstreeInstance.destroy();
+                    $('#tree-container').empty();
+                    
+                    $('#tree-container').jstree({
+                        'core': {
+                            'data': treeData,
+                            'check_callback': true
+                        },
+                        'types': {
+                            'root': { 'icon': 'fa fa-cube' },
+                            'applicationGroup': { 'icon': 'fa fa-folder' },
+                            'application': { 'icon': 'fa fa-file-code' },
+                            'topic': { 'icon': 'fa fa-exchange-alt' }
+                        },
+                        'plugins': ['types', 'dnd', 'contextmenu'],
+                        'contextmenu': {
+                            'items': function(node) {
+                                const items = {};
+                                
+                                if (node.type === 'root' || node.type === 'applicationGroup') {
+                                    items.addGroup = {
+                                        'label': 'ApplicationGroup 추가',
+                                        'action': function() {
+                                            if (node.type === 'root') {
+                                                addApplicationGroup();
+                                            }
+                                        }
+                                    };
+                                }
+                                
+                                if (node.type === 'applicationGroup') {
+                                    items.addApp = {
+                                        'label': 'Application 추가',
+                                        'action': function() {
+                                            addApplication(node.id);
+                                        }
+                                    };
+                                }
+                                
+                                if (node.type === 'application') {
+                                    items.addTopic = {
+                                        'label': 'Topic 추가',
+                                        'action': function() {
+                                            addTopic(node.id);
+                                        }
+                                    };
+                                }
+                                
+                                if (node.type !== 'root') {
+                                    items.edit = {
+                                        'label': '편집',
+                                        'action': function() {
+                                            editNode(node);
+                                        }
+                                    };
+                                    
+                                    items.delete = {
+                                        'label': '삭제',
+                                        'action': function() {
+                                            deleteNode(node.id);
+                                        }
+                                    };
+                                }
+                                
+                                return items;
+                            }
+                        }
+                    });
+                    
+                    jstreeInstance = $('#tree-container').jstree(true);
+                    
+                    // 이벤트 핸들러 재등록
+                    $('#tree-container').on('changed.jstree', function(e, data) {
+                        updateXMLPreview();
+                    });
+                    
+                    $('#tree-container').on('move_node.jstree', function(e, data) {
+                        if (!isLocalChange) {
+                            isLocalChange = true;
+                            updateSharedData();
+                            isLocalChange = false;
+                        }
+                    });
+                    
+                    isLocalChange = false;
+                    updateXMLPreview();
+                } catch (error) {
+                    console.error('트리 데이터 파싱 오류:', error);
+                }
+            }
+        }
+        
+        // XML 미리보기 업데이트
+        function updateXMLPreview() {
+            const xml = generateXML();
+            const highlightedXml = highlightXML(xml);
+            document.getElementById('xml-preview').innerHTML = highlightedXml;
+        }
+        
+        // 트리 데이터를 XML로 변환
+        function generateXML() {
+            const rootNode = jstreeInstance.get_node('root');
+            if (!rootNode) return '<Applications>\n</Applications>';
+            
+            let xml = '<Applications>\n';
+            
+            // ApplicationGroup 노드들 처리
+            const groupNodes = jstreeInstance.get_node(rootNode).children;
+            groupNodes.forEach(groupId => {
+                const groupNode = jstreeInstance.get_node(groupId);
+                if (groupNode.type === 'applicationGroup') {
+                    xml += `  <ApplicationGroup name="${escapeXml(groupNode.data.name || groupNode.text)}">\n`;
+                    
+                    // Application 노드들 처리
+                    groupNode.children.forEach(appId => {
+                        const appNode = jstreeInstance.get_node(appId);
+                        if (appNode.type === 'application') {
+                            xml += `    <Application name="${escapeXml(appNode.data.name || appNode.text)}">\n`;
+                            
+                            // Topic 노드들 처리
+                            appNode.children.forEach(topicId => {
+                                const topicNode = jstreeInstance.get_node(topicId);
+                                if (topicNode.type === 'topic') {
+                                    xml += `      <Topic name="${escapeXml(topicNode.data.name)}" `;
+                                    xml += `proto="${escapeXml(topicNode.data.proto)}" `;
+                                    xml += `direction="${escapeXml(topicNode.data.direction)}"/>\n`;
+                                }
+                            });
+                            
+                            xml += '    </Application>\n';
+                        }
+                    });
+                    
+                    xml += '  </ApplicationGroup>\n';
+                }
+            });
+            
+            xml += '</Applications>';
+            return xml;
+        }
+        
+        // XML 특수문자 이스케이프
+        function escapeXml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        }
+        
+        // XML 구문 하이라이팅
+        function highlightXML(xml) {
+            return xml
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/(&lt;\/?)(\w+)(.*?)(&gt;)/g, 
+                    '$1<span class="xml-tag">$2</span>$3$4')
+                .replace(/(\w+)="([^"]*)"/g, 
+                    '<span class="xml-attribute">$1</span>=<span class="xml-value">"$2"</span>');
+        }
+        
+        // 트리 펼치기/접기
+        function expandAll() {
+            jstreeInstance.open_all();
+        }
+        
+        function collapseAll() {
+            jstreeInstance.close_all();
+            jstreeInstance.open_node('root');
+        }
+        
+        // 전체 삭제
+        function clearAll() {
+            if (confirm('모든 노드를 삭제하시겠습니까?')) {
+                const rootNode = jstreeInstance.get_node('root');
+                const children = [...rootNode.children];
+                children.forEach(childId => {
+                    jstreeInstance.delete_node(childId);
+                });
+                
+                if (!isLocalChange) {
+                    isLocalChange = true;
+                    updateSharedData();
+                    isLocalChange = false;
+                }
+            }
+        }
+        
+        // XML 다운로드
+        function downloadXML() {
+            const xml = generateXML();
+            const blob = new Blob([xml], { type: 'text/xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'applications.xml';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // Room 입장
+        function joinRoom(event) {
+            if (event) {
+                event.preventDefault();
+            }
+            
+            const roomName = document.getElementById('roomName').value.trim();
             if (!roomName) {
                 showError('Room 이름을 입력해주세요.');
                 return;
             }
             
-            // 기존 연결이 있으면 정리
-            if (provider) {
-                provider.destroy();
-            }
-            
             currentRoom = roomName;
-            
-            // URL 업데이트
-            const newUrl = new URL(window.location);
-            newUrl.searchParams.set('room', roomName);
-            window.history.pushState({}, '', newUrl);
             
             // UI 전환
             document.getElementById('roomSelector').style.display = 'none';
             document.getElementById('editorContainer').style.display = 'block';
             document.getElementById('currentRoomName').textContent = roomName;
             
-            // Yjs 초기화
-            initializeYjs(roomName);
+            // WebSocket 연결 설정
+            waitForLibraries(() => {
+                setupCollaboration(roomName);
+            });
         }
         
-        function initializeYjs(roomName) {
-            console.log('Yjs 초기화 시작:', roomName);
-            
-            // 새로운 Y 문서 생성
-            ydoc = new Y.Doc();
-            
-            // XML 텍스트 생성
-            ytext = ydoc.getText('xml');
-            console.log('ytext 생성됨:', ytext);
-            
-            // WebSocket 연결
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.host;
-            const wsUrl = `${protocol}//${host}/ws/${roomName}`;
-            
-            console.log('WebSocket URL:', wsUrl);
-            
-            provider = new WebsocketProvider(wsUrl, roomName, ydoc, {
-                connect: true
-            });
-            
-            // 연결 상태 모니터링
-            provider.on('status', event => {
-                console.log('WebSocket 상태 변경:', event.status);
-                updateConnectionStatus(event.status === 'connected');
-            });
-            
-            // 텍스트 변경 감지
-            ytext.observe(event => {
-                if (!isLocalChange) {
-                    isLocalChange = true;
-                    document.getElementById('xmlEditor').value = ytext.toString();
-                    updateLineNumbers();
-                    isLocalChange = false;
-                }
-            });
-            
-            // 초기 렌더링
-            const editor = document.getElementById('xmlEditor');
-            editor.value = ytext.toString();
-            updateLineNumbers();
+        // 협업 설정
+        function setupCollaboration(roomName) {
+            try {
+                // Yjs 문서 생성
+                ydoc = new Y.Doc();
+                
+                // 공유 맵 생성
+                ymap = ydoc.getMap('treeData');
+                
+                // WebSocket provider 설정
+                const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/crdt`;
+                provider = new WebsocketProvider(wsUrl, roomName, ydoc);
+                
+                // 연결 상태 이벤트
+                provider.on('status', event => {
+                    console.log('WebSocket 상태:', event.status);
+                    updateConnectionStatus(event.status === 'connected');
+                });
+                
+                // 동기화 이벤트
+                provider.on('synced', synced => {
+                    console.log('동기화 상태:', synced);
+                    if (synced) {
+                        updateConnectionStatus(true);
+                        // 초기 데이터 로드
+                        updateTreeFromShared();
+                    }
+                });
+                
+                // 공유 데이터 변경 이벤트
+                ymap.observe(event => {
+                    console.log('Map 변경 감지:', event);
+                    updateTreeFromShared();
+                });
+                
+                // 트리 초기화
+                initializeTree();
+                
+                console.log('협업 설정 완료');
+                
+            } catch (error) {
+                console.error('협업 설정 오류:', error);
+                showError('협업 연결 설정 중 오류가 발생했습니다.');
+            }
         }
         
+        // 연결 상태 업데이트
         function updateConnectionStatus(connected) {
             const statusElement = document.getElementById('connectionStatus');
             const statusText = document.getElementById('statusText');
@@ -605,229 +1139,51 @@
             }
         }
         
-        // XML 포맷팅
-        window.formatXML = function() {
-            const editor = document.getElementById('xmlEditor');
-            const xml = editor.value;
-            
-            try {
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(xml, 'text/xml');
-                
-                if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
-                    showValidationStatus('XML 구문 오류가 있습니다.', false);
-                    return;
-                }
-                
-                const formatted = formatXMLString(xml);
-                editor.value = formatted;
-                
-                if (ytext) {
-                    isLocalChange = true;
-                    ytext.delete(0, ytext.length);
-                    ytext.insert(0, formatted);
-                    isLocalChange = false;
-                }
-                
-                updateLineNumbers();
-                showValidationStatus('XML이 정리되었습니다.', true);
-            } catch (e) {
-                showValidationStatus('XML 포맷팅 오류: ' + e.message, false);
-            }
-        }
-        
-        function formatXMLString(xml) {
-            const PADDING = '  ';
-            let formatted = '';
-            let pad = 0;
-            
-            xml = xml.replace(/(>)(<)(\/*)/g, '$1\n$2$3');
-            xml.split('\n').forEach(node => {
-                let indent = 0;
-                if (node.match(/.+<\/\w[^>]*>$/)) {
-                    indent = 0;
-                } else if (node.match(/^<\/\w/)) {
-                    if (pad !== 0) {
-                        pad -= 1;
-                    }
-                } else if (node.match(/^<\w([^>]*[^\/])?>.*$/)) {
-                    indent = 1;
-                } else {
-                    indent = 0;
-                }
-                
-                const padding = PADDING.repeat(pad);
-                formatted += padding + node + '\n';
-                pad += indent;
-            });
-            
-            return formatted.trim();
-        }
-        
-        // XML 유효성 검사
-        window.validateXML = function() {
-            const editor = document.getElementById('xmlEditor');
-            const xml = editor.value;
-            
-            if (!xml.trim()) {
-                showValidationStatus('XML 내용이 비어있습니다.', false);
-                return;
-            }
-            
-            try {
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(xml, 'text/xml');
-                
-                if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
-                    const error = xmlDoc.getElementsByTagName('parsererror')[0].textContent;
-                    showValidationStatus('XML 구문 오류: ' + error, false);
-                } else {
-                    showValidationStatus('유효한 XML 문서입니다.', true);
-                }
-            } catch (e) {
-                showValidationStatus('유효성 검사 오류: ' + e.message, false);
-            }
-        }
-        
-        function showValidationStatus(message, isValid) {
-            const status = document.getElementById('validationStatus');
-            status.textContent = message;
-            status.className = 'validation-status ' + (isValid ? 'validation-valid' : 'validation-invalid');
-            status.style.display = 'block';
-            
-            setTimeout(() => {
-                status.style.display = 'none';
-            }, 5000);
-        }
-        
-        // 에디터 비우기
-        window.clearEditor = function() {
-            if (confirm('정말로 모든 내용을 삭제하시겠습니까?')) {
-                const editor = document.getElementById('xmlEditor');
-                editor.value = '';
-                
-                if (ytext) {
-                    isLocalChange = true;
-                    ytext.delete(0, ytext.length);
-                    isLocalChange = false;
-                }
-                
-                updateLineNumbers();
-            }
-        }
-        
-        // XML 파일 로드
-        window.loadXMLFile = function(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const content = e.target.result;
-                const editor = document.getElementById('xmlEditor');
-                editor.value = content;
-                
-                if (ytext) {
-                    isLocalChange = true;
-                    ytext.delete(0, ytext.length);
-                    ytext.insert(0, content);
-                    isLocalChange = false;
-                }
-                
-                updateLineNumbers();
-                showValidationStatus('파일이 로드되었습니다.', true);
-            };
-            reader.readAsText(file);
-        }
-        
-        // XML 다운로드
-        window.downloadXML = function() {
-            const editor = document.getElementById('xmlEditor');
-            const content = editor.value;
-            
-            if (!content.trim()) {
-                showValidationStatus('다운로드할 내용이 없습니다.', false);
-                return;
-            }
-            
-            const blob = new Blob([content], { type: 'text/xml' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${currentRoom || 'document'}.xml`;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-        
-        // 샘플 XML 삽입
-        window.insertSampleXML = function() {
-            const sampleXML = `<?xml version="1.0" encoding="UTF-8"?>
-<Applications>
-  <ApplicationGroup name="OperationSW">
-    <Application name="GUI_PTZ">
-      <Topic name="PTZ_CONTROL" proto="ptz_ctl.proto" direction="publish"/>
-      <Topic name="PTZ_STATUS" proto="ptz_info.proto" direction="subscribe"/>
-    </Application>
-  </ApplicationGroup>
-
-  <ApplicationGroup name="AISW">
-    <Application name="AITracker">
-      <Topic name="DETECTED_OBJECT" proto="detected_object.proto" direction="publish"/>
-      <Topic name="INTEREST_TARGET" proto="interest_target.proto" direction="subscribe"/>
-    </Application>
-  </ApplicationGroup>
-
-  <ApplicationGroup name="SensorSW">
-    <Application name="IFRadar">
-      <Topic name="RADAR_TRACK" proto="radar_track.proto" direction="publish"/>
-      <Topic name="RADAR_STATUS" proto="radar_status.proto" direction="subscribe"/>
-    </Application>
-  </ApplicationGroup>
-</Applications>`;
-            
-            const editor = document.getElementById('xmlEditor');
-            editor.value = sampleXML;
-            
-            if (ytext) {
-                isLocalChange = true;
-                ytext.delete(0, ytext.length);
-                ytext.insert(0, sampleXML);
-                isLocalChange = false;
-            }
-            
-            updateLineNumbers();
-            formatXML();
-        }
-        
-        window.leaveRoom = function() {
+        // Room 나가기
+        function leaveRoom() {
             if (provider) {
                 provider.destroy();
                 provider = null;
             }
             
-            // URL에서 room 파라미터 제거
-            const newUrl = new URL(window.location);
-            newUrl.searchParams.delete('room');
-            window.history.pushState({}, '', newUrl);
+            if (ydoc) {
+                ydoc.destroy();
+                ydoc = null;
+            }
+            
+            ymap = null;
+            currentRoom = null;
+            
+            // jsTree 정리
+            if (jstreeInstance) {
+                jstreeInstance.destroy();
+                jstreeInstance = null;
+            }
             
             // UI 초기화
             document.getElementById('roomSelector').style.display = 'block';
             document.getElementById('editorContainer').style.display = 'none';
-            document.getElementById('roomNameInput').value = '';
-            document.getElementById('xmlEditor').value = '';
-            
-            // 변수 초기화
-            ydoc = null;
-            ytext = null;
-            currentRoom = null;
-            
-            updateLineNumbers();
+            document.getElementById('roomName').value = '';
+            $('#tree-container').empty();
+            document.getElementById('xml-preview').innerHTML = '';
         }
+        
+        // 페이지 로드 시 초기화
+        window.addEventListener('DOMContentLoaded', () => {
+            // URL에 room 파라미터가 있으면 자동 입장
+            if (roomFromUrl) {
+                document.getElementById('roomName').value = roomFromUrl;
+                joinRoom();
+            }
+        });
         
         // 페이지 언로드 시 정리
         window.addEventListener('beforeunload', () => {
             if (provider) {
                 provider.destroy();
+            }
+            if (ydoc) {
+                ydoc.destroy();
             }
         });
     </script>
