@@ -135,6 +135,7 @@ python run_servers.py
 환경 변수로 포트 설정:
 - `PORT`: HTTP 서버 포트 (Azure에서 자동 설정)
 - `WEBSOCKET_PORT`: WebSocket 서버 포트 (기본값: 8765)
+- `DATA_DIR`: 문서 저장 디렉토리 경로 지정. Azure App Service(Linux)에서는 `/home/data`를 권장 (재시작/재배포 후에도 유지됨)
 
 Azure App Service 시작 명령:
 ```
