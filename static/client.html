@@ -60,11 +60,21 @@
     const url = `${protocol}//${location.host}/ws`;
 
     provider = new WebsocketProvider(url, roomName, ydoc, { connect: false });
+
+   
+
     // 상태 로그 & 표시
     provider.on('status', e => {
       document.getElementById('connStatus').textContent = `상태: ${e.status}`;
       console.log('[status]', e.status);
+
+      if (e.status === 'connected') {
+       
+
+      }
     });
+
+
     provider.on('connection-open', () => {
       console.log('[ws] open');
       if (provider.ws) provider.ws.binaryType = 'arraybuffer';
@@ -132,6 +142,9 @@
       const sel = jstreeInstance.get_selected(true)[0] || jstreeInstance.get_node('root');
       const newNode = jstreeInstance.create_node(sel, { text: '새 노드' }, 'last');
       if (newNode) jstreeInstance.edit(newNode);
+      
+      const ytext = ydoc.getText('notes');
+      ytext.insert(0, 'Client says hello ' + Math.random().toFixed(5) + '\n');
     };
     document.getElementById('btnRename').onclick = () => {
       const sel = jstreeInstance.get_selected(true)[0];

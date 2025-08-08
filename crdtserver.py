@@ -35,12 +35,23 @@ class LoggingFileYStore(FileYStore):
 
     async def write(self, update: bytes):
         await super().write(update)
-        logger.info(f"[ystore] wrote {len(update)} bytes for room='{self._room}' -> {self._path}")
-
+        try:
+            size = os.path.getsize(self._path)
+        except Exception:
+            size = -1
+        logger.info(f"[ystore] wrote {len(update)} bytes room='{self._room}' -> {self._path} (size={size})")
+    async def apply_updates(self, ydoc):
+            updates = await self.get_all()  # ✅ 이제 동작함
+            for update in updates:
+                ydoc.apply_update(update)
+            logger.info(f"[ystore] applied {len(updates)} updates for room '{self._room}'")
 
 def log_room_preview(key: str, room: YRoom):
-    """문서의 상태를 안전하게 덤프: 업데이트 바이트, 루트 키/타입, notes/트리 일부"""
+    """문서 루트 키/타입과 notes, treeData 일부만 안전하게 로깅"""
     doc = room.ydoc
+    # 이 두 줄을 반드시 추가!
+    doc.get("notes", type=Text)
+    doc.get("treeData", type=Map)
 
     def _preview(s: str, n=120):
         try:
@@ -48,51 +59,38 @@ def log_room_preview(key: str, room: YRoom):
         except Exception:
             return "<preview error>"
 
-    # 1) 전체 상태 바이트 크기 (예외 메시지까지 로깅)
-    try:
-        update_bytes = len(doc.encode_state_as_update())
-    except Exception as e:
-        logger.info(f"[dump] encode_state_as_update failed: {e}")
-        update_bytes = -1
-
-
-
-    # 2) 루트 키 목록 & 타입명 (있으면)
+    # 루트 키/타입 나열 (존재할 때만)
     keys = []
     try:
-        # Doc이 매핑 프로토콜을 구현하면 이터레이션/키 조회 가능
-        # 일부 버전에선 list(doc) 또는 doc.keys()가 동작
         try:
-            iterable = list(doc)
+            it = list(doc)
         except Exception:
-            iterable = list(doc.keys())  # fallback
-        for k in iterable:
+            it = list(doc.keys())
+        for k in it:
             try:
                 v = doc[k]
-                tname = type(v).__name__
-                keys.append(f"{k}:{tname}")
+                keys.append(f"{k}:{type(v).__name__}")
             except Exception as e:
                 keys.append(f"{k}:<read error {e}>")
     except Exception as e:
         keys = [f"<keys read error: {e}>"]
 
-    # 3) notes 내용 시도 (duck-typing)
+    # notes(Text) 내용 일부
     notes_str = ""
     try:
-        obj = doc["notes"]
+        obj = doc["notes"]  # 없으면 예외
+        # 버전별로 to_string/to_py/str 중 하나가 됨
         if hasattr(obj, "to_string"):
             notes_str = obj.to_string() or ""
         elif hasattr(obj, "to_py"):
-            # 어떤 버전에선 to_py가 문자열 반환
             tmp = obj.to_py()
             notes_str = tmp if isinstance(tmp, str) else ""
         else:
-            # 마지막 수단
             notes_str = str(obj) or ""
     except Exception:
         pass
 
-    # 4) treeData 문자열 시도 (Map → dict 변환 뒤 'treeData' 키)
+    # treeData(Map) → dict → 'treeData' 키의 문자열 일부
     tree_str = ""
     try:
         obj = doc["treeData"]
@@ -101,20 +99,17 @@ def log_room_preview(key: str, room: YRoom):
             data = obj.to_py() or {}
         elif hasattr(obj, "to_json"):
             data = obj.to_json() or {}
-        # 클라이언트가 ymap.set('treeData', JSON.stringify(...))로 넣음
         val = data.get("treeData", "")
         if isinstance(val, str):
             tree_str = val
-        else:
-            # 혹시 구조가 dict인 경우도 프리뷰
-            tree_str = str(val) if val else ""
+        elif val:
+            tree_str = str(val)
     except Exception:
         pass
 
-    logger.info(
-        "[dump] room='%s' update_bytes=%s keys=%s notes(len=%d)='%s' treeDataStr(len=%d)='%s'",
-        key, update_bytes, keys, len(notes_str), _preview(notes_str), len(tree_str), _preview(tree_str)
-    )
+    logger.info("[dump] room='%s' keys=%s notes(len=%d)='%s' treeDataStr(len=%d)='%s'",
+                key, keys, len(notes_str), _preview(notes_str),
+                len(tree_str), _preview(tree_str))
 
 
 
@@ -126,6 +121,7 @@ def safe_room_id(name: str) -> str:
     return s[:128] or 'room'
 
 # 파일 저장형 YRoom
+'''
 class FileBackedYRoom(YRoom):
     def __init__(self, room_name: str):
         super().__init__(ready=False)
@@ -153,7 +149,7 @@ class FileBackedYRoom(YRoom):
 
         except Exception as e:
             logger.error(f"Failed to save room {self.room_name}: {e}")
-
+'''
 # WebSocket 서버
 websocket_server = WebsocketServer(auto_clean_rooms=False)
 
@@ -213,6 +209,65 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 async def index():
     with open(STATIC_DIR / "client.html", "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
+
+@app.get("/dump/{room_key}")
+async def dump_room_state(room_key: str):
+
+
+    room = websocket_server.rooms.get(room_key)
+    if not room:
+        return {"error": f"room '{room_key}' not loaded"}
+
+    doc = room.ydoc
+    # # notes 초기화 및 삽입
+    # if "notes" not in doc:
+    #     doc["notes"] = Text()
+    # doc["notes"].insert(0, "Hello CRDT!\n")
+
+    # # treeData 초기화 및 설정
+    # if "treeData" not in doc:
+    #     doc["treeData"] = Map()
+    # doc["treeData"]["example"] = "test"
+
+    data = {}
+
+    # ✅ 현재 문서에 저장된 모든 키와 타입 출력
+    keys_info = {}
+    try:
+        for k in doc:
+            try:
+                v = doc[k]
+                keys_info[k] = type(v).__name__
+            except Exception as inner_e:
+                keys_info[k] = f"<error: {inner_e}>"
+    except Exception as e:
+        keys_info["<error>"] = str(e)
+
+    data["keys"] = keys_info  # 🔍 키 정보 추가
+
+    # notes 출력
+    try:
+        if "notes" in doc:
+            notes = doc["notes"]
+            data["notes"] = str(notes)[:100]
+        else:
+            data["notes"] = "<empty>"
+    except Exception as e:
+        data["notes"] = f"<error: {e}>"
+
+    # treeData 출력
+    try:
+        if "treeData" in doc:
+            tree = doc["treeData"]
+            data["treeData"] = str(tree)[:100]
+        else:
+            data["treeData"] = "<empty>"
+    except Exception as e:
+        data["treeData"] = f"<error: {e}>"
+
+    return data
+
+
 
 # WebSocket 엔드포인트
 # 교체 (복붙)
