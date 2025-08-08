@@ -3,19 +3,17 @@ import logging
 import os
 from pathlib import Path
 from typing import Optional
-
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
 import uvicorn
 from pycrdt_websocket import WebsocketServer, YRoom
 from contextlib import asynccontextmanager
 from types import MethodType
 from pycrdt_websocket.ystore import FileYStore
 
-# 기본 설정
+# ===== 기본 경로 설정 =====
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR_ENV = os.environ.get("DATA_DIR")
 if DATA_DIR_ENV:
@@ -24,213 +22,86 @@ elif os.environ.get("WEBSITE_INSTANCE_ID") or os.environ.get("WEBSITE_SITE_NAME"
     DATA_DIR = Path("/home/data")
 else:
     DATA_DIR = BASE_DIR / "data"
+
 STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 STATIC_DIR.mkdir(exist_ok=True)
 
-# 로깅 설정
+# ===== 로깅 =====
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# FastAPI 앱
+# ===== FastAPI =====
 app = FastAPI(title="Yjs + pycrdt-websocket 통합 서버")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-# YRoom 정의
+# ===== 커스텀 YRoom (자동 저장/로드) =====
 class FileBackedYRoom(YRoom):
     def __init__(self, room_name: str):
         super().__init__(ready=False)
         self.room_name = room_name
         self.file_path = DATA_DIR / f"{room_name}.ys"
-        self._save_task = None
         logger.info(f"Room created: {room_name}")
 
-    async def on_connect(self):
+    async def load_from_disk(self):
+        """저장된 CRDT 문서 로드"""
         if self.file_path.exists():
             try:
                 with open(self.file_path, "rb") as f:
-                    state = f.read()
-                    if state:
-                        self.ydoc.apply_update(state)
-                        logger.info(f"Loaded {self.room_name} from disk")
+                    update_data = f.read()
+                    if update_data:
+                        self.ydoc.apply_update(update_data)
+                        logger.info(f"Loaded room '{self.room_name}' from disk")
             except Exception as e:
                 logger.error(f"Failed to load room {self.room_name}: {e}")
-        self._save_task = asyncio.create_task(self._auto_save())
-        self.ready = True
 
-    async def on_disconnect(self):
-        if self._save_task:
-            self._save_task.cancel()
-            try:
-                await self._save_task
-            except asyncio.CancelledError:
-                pass
-        await self._save_document()
-
-    async def _auto_save(self):
-        while True:
-            await asyncio.sleep(5)
-            await self._save_document()
-
-    async def _save_document(self):
+    async def save_to_disk(self):
+        """CRDT 문서 저장"""
         try:
-            state = self.ydoc.get_state()
-            if state:
-                with open(self.file_path, "wb") as f:
-                    f.write(state)
+            update_data = self.ydoc.encode_state_as_update()
+            with open(self.file_path, "wb") as f:
+                f.write(update_data)
+            logger.debug(f"Saved room '{self.room_name}' to disk ({len(update_data)} bytes)")
         except Exception as e:
             logger.error(f"Failed to save room {self.room_name}: {e}")
 
-
-# CRDT 서버 인스턴스
-# 수정할 코드 1
+# ===== WebSocket 서버 인스턴스 =====
 websocket_server = WebsocketServer(auto_clean_rooms=False)
 
-# pycrdt-websocket>=0.13.0에서는 rooms_factory 인자를 지원하지 않으므로,
-# 인스턴스의 get_room 메서드를 오버라이드하여 파일 기반 persistence를 추가한다.
+# ===== 커스텀 get_room (파일 기반 로드) =====
 async def _custom_get_room(self: WebsocketServer, name: str) -> YRoom:
-    if name not in self.rooms.keys():
-        # 파일 기반 YStore로 기존 업데이트를 먼저 적용한 뒤 ready 플래그를 켠다
-        ystore = FileYStore(str(DATA_DIR / f"{name}.ys"))
-        room = YRoom(ready=False, ystore=ystore, log=self.log)
-        # 기존 저장분을 메모리로 로드
-        await ystore.apply_updates(room.ydoc)
+    if name not in self.rooms:
+        room = FileBackedYRoom(name)
+        await room.load_from_disk()
         room.ready = True
         self.rooms[name] = room
-    room = self.rooms[name]
-    await self.start_room(room)
-    return room
+        await self.start_room(room)
+    return self.rooms[name]
 
-# 바인딩
 websocket_server.get_room = MethodType(_custom_get_room, websocket_server)
 
+# ===== FastAPI lifespan =====
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # start()를 백그라운드 태스크로 실행
     bg_task = asyncio.create_task(websocket_server.start())
-    # yield 이후에 클라이언트 요청을 받음
     yield
-    # 앱 종료 시 서버 정리
+    # 서버 종료 시 모든 룸 저장
+    for room in websocket_server.rooms.values():
+        if isinstance(room, FileBackedYRoom):
+            await room.save_to_disk()
     await websocket_server.stop()
-    # start() 태스크도 정리
     await bg_task
 
-# FastAPI에 lifespan 파라미터 전달
+# lifespan 적용
 app = FastAPI(lifespan=lifespan)
 
-# FastAPI 라우트
+# ===== 라우트 =====
 @app.get("/", response_class=HTMLResponse)
-@app.get("/index", response_class=HTMLResponse)
 async def index():
-    """메인 페이지"""
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>CRDT XML 협업 편집기</title>
-        <meta charset="utf-8">
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-                max-width: 800px;
-                margin: 50px auto;
-                padding: 20px;
-                background-color: #f5f5f5;
-            }
-            h1 {
-                color: #333;
-                text-align: center;
-            }
-            .description {
-                text-align: center;
-                color: #666;
-                margin: 20px 0;
-                line-height: 1.6;
-            }
-            .features {
-                background: white;
-                padding: 30px;
-                border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                margin: 30px 0;
-            }
-            .features h2 {
-                color: #2c3e50;
-                margin-bottom: 20px;
-            }
-            .features ul {
-                list-style: none;
-                padding: 0;
-            }
-            .features li {
-                padding: 10px 0;
-                padding-left: 30px;
-                position: relative;
-            }
-            .features li:before {
-                content: "✓";
-                position: absolute;
-                left: 0;
-                color: #27ae60;
-                font-weight: bold;
-            }
-            .link-container {
-                text-align: center;
-                margin-top: 30px;
-            }
-            a {
-                display: inline-block;
-                padding: 12px 24px;
-                background-color: #3498db;
-                color: white;
-                text-decoration: none;
-                border-radius: 6px;
-                font-weight: 600;
-                transition: background-color 0.3s;
-            }
-            a:hover {
-                background-color: #2980b9;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>CRDT XML 협업 편집기</h1>
-        <p class="description">
-            Yjs와 pycrdt-websocket을 기반으로 한 실시간 XML 문서 협업 편집 시스템입니다.<br>
-            여러 사용자가 동시에 XML 문서를 편집하고 실시간으로 동기화할 수 있습니다.
-        </p>
-        
-        <div class="features">
-            <h2>주요 기능</h2>
-            <ul>
-                <li>실시간 다중 사용자 XML 편집</li>
-                <li>CRDT 기반 충돌 없는 동기화</li>
-                <li>XML 구문 검증 및 포맷팅</li>
-                <li>XML 파일 업로드/다운로드</li>
-                <li>자동 저장 및 복구</li>
-                <li>룸 기반 협업 공간</li>
-            </ul>
-        </div>
-        
-        <div class="link-container">
-            <a href="/crdt">XML 편집기 시작하기</a>
-        </div>
-    </body>
-    </html>
-    """
+    return "<h1>Yjs + pycrdt-websocket 서버 실행 중</h1>"
 
-@app.get("/crdt")
-async def crdt_page(request: Request, room: Optional[str] = None):
-    return templates.TemplateResponse("crdt.html", {
-        "request": request,
-        "room_name": room,
-        "websocket_host": request.url.hostname or "localhost",
-        "websocket_port": request.url.port or 8000
-    })
-
-# 수정할 코드 2
 @app.websocket("/ws/{room_name:path}")
 async def websocket_endpoint(websocket: WebSocket, room_name: str):
     async def _send(data):
@@ -251,8 +122,7 @@ async def websocket_endpoint(websocket: WebSocket, room_name: str):
     except Exception:
         logger.exception(f"WebSocket error in room: {room_name}")
 
-
-# 메인 실행
+# ===== 실행 =====
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False, log_level="info")
