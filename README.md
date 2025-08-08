@@ -24,7 +24,7 @@ Yjs와 pycrdt-websocket을 기반으로 한 실시간 XML 문서 협업 편집 �
 | 웹 UI (/crdt) | 사용자가 room 이름을 입력하고 문서 편집을 테스트하는 페이지 | HTML + JS (Yjs + y-websocket) |
 | FastAPI 서버 | /index 및 /crdt HTTP 라우팅 제공 | Python (FastAPI) |
 | WebSocket 서버 | 클라이언트와 실시간 CRDT 데이터 동기화 처리 | Python (pycrdt-websocket) |
-| 문서 저장소 | room 별 .ys 파일로 문서 내용 저장 | 파일 기반 (./data/room-name.ys) |
+| 문서 저장소 | room 별 .ys 파일로 문서 내용 저장 | 파일 기반 (`DATA_DIR` 또는 Azure: `/home/data`) |
 
 ## 🛠️ 설치 방법
 
@@ -49,28 +49,12 @@ pip install -r requirements.txt
 ./start.sh
 ```
 
-### 방법 2: 통합 서버 실행
+### 방법 2: 수동 실행
 ```bash
 source venv/bin/activate  # Windows: venv\Scripts\activate
 python server.py
 ```
 
-### 방법 3: 개별 서버 실행
-```bash
-# 터미널 1: FastAPI 서버
-source venv/bin/activate
-python main.py
-
-# 터미널 2: WebSocket 서버
-source venv/bin/activate
-python websocket_server.py
-```
-
-### 방법 4: 프로세스 관리자 사용
-```bash
-source venv/bin/activate
-python run_servers.py
-```
 
 ## 사용 방법
 
@@ -101,9 +85,7 @@ python run_servers.py
 │   └── crdt.html         # CRDT 편집기 페이지
 ├── static/               # 정적 파일 (현재 비어있음)
 ├── server.py             # 통합 서버 (FastAPI + WebSocket)
-├── main.py              # FastAPI 서버
-├── websocket_server.py   # pycrdt-websocket 서버
-├── run_servers.py       # 서버 실행 도우미
+├── run_servers.py       # 서버 실행 도우미 (선택 사항, 통합 서버만 사용 시 불필요)
 ├── setup.sh             # 초기 설정 스크립트
 ├── start.sh             # 서버 시작 스크립트
 ├── startup.txt          # Azure App Service 시작 명령
@@ -121,7 +103,7 @@ python run_servers.py
 
 - **Backend**:
   - FastAPI: HTTP 서버
-  - pycrdt-websocket: CRDT WebSocket 서버
+  - pycrdt-websocket: CRDT WebSocket 서버 (통합: `server.py`)
   - pycrdt: Python CRDT 구현
 
 ## ⚙️ 환경 설정
@@ -135,6 +117,7 @@ python run_servers.py
 환경 변수로 포트 설정:
 - `PORT`: HTTP 서버 포트 (Azure에서 자동 설정)
 - `WEBSOCKET_PORT`: WebSocket 서버 포트 (기본값: 8765)
+- `DATA_DIR`: 문서 저장 디렉토리 경로 지정. Azure App Service(Linux)에서는 `/home/data`를 권장 (재시작/재배포 후에도 유지됨)
 
 Azure App Service 시작 명령:
 ```
