@@ -13,6 +13,7 @@ import uvicorn
 from pycrdt_websocket import WebsocketServer, YRoom
 from contextlib import asynccontextmanager
 from types import MethodType
+from pycrdt_websocket.ystore import FileYStore
 
 # 기본 설정
 BASE_DIR = Path(__file__).resolve().parent
@@ -85,7 +86,25 @@ class FileBackedYRoom(YRoom):
 
 # CRDT 서버 인스턴스
 # 수정할 코드 1
-websocket_server = WebsocketServer(rooms_factory=FileBackedYRoom, auto_clean_rooms=False)
+websocket_server = WebsocketServer(auto_clean_rooms=False)
+
+# pycrdt-websocket>=0.13.0에서는 rooms_factory 인자를 지원하지 않으므로,
+# 인스턴스의 get_room 메서드를 오버라이드하여 파일 기반 persistence를 추가한다.
+async def _custom_get_room(self: WebsocketServer, name: str) -> YRoom:
+    if name not in self.rooms.keys():
+        # 파일 기반 YStore로 기존 업데이트를 먼저 적용한 뒤 ready 플래그를 켠다
+        ystore = FileYStore(str(DATA_DIR / f"{name}.ys"))
+        room = YRoom(ready=False, ystore=ystore, log=self.log)
+        # 기존 저장분을 메모리로 로드
+        await ystore.apply_updates(room.ydoc)
+        room.ready = True
+        self.rooms[name] = room
+    room = self.rooms[name]
+    await self.start_room(room)
+    return room
+
+# 바인딩
+websocket_server.get_room = MethodType(_custom_get_room, websocket_server)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -94,7 +113,7 @@ async def lifespan(app: FastAPI):
     # yield 이후에 클라이언트 요청을 받음
     yield
     # 앱 종료 시 서버 정리
-    await websocket_server.close()
+    await websocket_server.stop()
     # start() 태스크도 정리
     await bg_task
 
