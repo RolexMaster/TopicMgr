@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from types import MethodType
 from pycrdt_websocket import WebsocketServer, YRoom
 from pycrdt_websocket.ystore import FileYStore, YDocNotFound
-
+from pycrdt import Text, Map  # ← 추가
 
 # 경로 설정
 BASE_DIR = Path(__file__).resolve().parent
@@ -23,6 +23,100 @@ STATIC_DIR.mkdir(exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# 파일 상단 임포트들 아래 어딘가에 추가
+# 맨 위 import 아래 어딘가에 추가
+class LoggingFileYStore(FileYStore):
+    def __init__(self, path: str, room_name: str):
+        super().__init__(path)
+        self._room = room_name
+        self._path = path
+
+    async def write(self, update: bytes):
+        await super().write(update)
+        logger.info(f"[ystore] wrote {len(update)} bytes for room='{self._room}' -> {self._path}")
+
+
+def log_room_preview(key: str, room: YRoom):
+    """문서의 상태를 안전하게 덤프: 업데이트 바이트, 루트 키/타입, notes/트리 일부"""
+    doc = room.ydoc
+
+    def _preview(s: str, n=120):
+        try:
+            return (s[:n] + "…") if len(s) > n else s
+        except Exception:
+            return "<preview error>"
+
+    # 1) 전체 상태 바이트 크기 (예외 메시지까지 로깅)
+    try:
+        update_bytes = len(doc.encode_state_as_update())
+    except Exception as e:
+        logger.info(f"[dump] encode_state_as_update failed: {e}")
+        update_bytes = -1
+
+
+
+    # 2) 루트 키 목록 & 타입명 (있으면)
+    keys = []
+    try:
+        # Doc이 매핑 프로토콜을 구현하면 이터레이션/키 조회 가능
+        # 일부 버전에선 list(doc) 또는 doc.keys()가 동작
+        try:
+            iterable = list(doc)
+        except Exception:
+            iterable = list(doc.keys())  # fallback
+        for k in iterable:
+            try:
+                v = doc[k]
+                tname = type(v).__name__
+                keys.append(f"{k}:{tname}")
+            except Exception as e:
+                keys.append(f"{k}:<read error {e}>")
+    except Exception as e:
+        keys = [f"<keys read error: {e}>"]
+
+    # 3) notes 내용 시도 (duck-typing)
+    notes_str = ""
+    try:
+        obj = doc["notes"]
+        if hasattr(obj, "to_string"):
+            notes_str = obj.to_string() or ""
+        elif hasattr(obj, "to_py"):
+            # 어떤 버전에선 to_py가 문자열 반환
+            tmp = obj.to_py()
+            notes_str = tmp if isinstance(tmp, str) else ""
+        else:
+            # 마지막 수단
+            notes_str = str(obj) or ""
+    except Exception:
+        pass
+
+    # 4) treeData 문자열 시도 (Map → dict 변환 뒤 'treeData' 키)
+    tree_str = ""
+    try:
+        obj = doc["treeData"]
+        data = {}
+        if hasattr(obj, "to_py"):
+            data = obj.to_py() or {}
+        elif hasattr(obj, "to_json"):
+            data = obj.to_json() or {}
+        # 클라이언트가 ymap.set('treeData', JSON.stringify(...))로 넣음
+        val = data.get("treeData", "")
+        if isinstance(val, str):
+            tree_str = val
+        else:
+            # 혹시 구조가 dict인 경우도 프리뷰
+            tree_str = str(val) if val else ""
+    except Exception:
+        pass
+
+    logger.info(
+        "[dump] room='%s' update_bytes=%s keys=%s notes(len=%d)='%s' treeDataStr(len=%d)='%s'",
+        key, update_bytes, keys, len(notes_str), _preview(notes_str), len(tree_str), _preview(tree_str)
+    )
+
+
 
 # room 이름을 파일명으로 안전하게 변환
 def safe_room_id(name: str) -> str:
@@ -67,7 +161,8 @@ websocket_server = WebsocketServer(auto_clean_rooms=False)
 async def _custom_get_room(self: WebsocketServer, name: str) -> YRoom:
     key = safe_room_id(name)  # 내부 키도 안전값으로 통일
     if key not in self.rooms:
-        ystore = FileYStore(str(DATA_DIR / f"{key}.ystore"))
+        #ystore = FileYStore(str(DATA_DIR / f"{key}.ystore"))
+        ystore = LoggingFileYStore(str(DATA_DIR / f"{key}.ystore"), room_name=key)
         room = YRoom(ready=True, ystore=ystore, log=logger)
         self.rooms[key] = room
         await self.start_room(room)
@@ -79,11 +174,14 @@ async def preload_rooms():
     count = 0
     for file in DATA_DIR.glob("*.ystore"):
         key = file.stem  # 이미 safe id
-        ystore = FileYStore(str(file))
+        #ystore = FileYStore(str(file))
+        ystore = LoggingFileYStore(str(file), room_name=key)
         room = YRoom(ready=False, ystore=ystore, log=logger)
         try:
             await ystore.apply_updates(room.ydoc)
             logger.info(f"[preload] restored room key='{key}' from {file.name}")
+             # 🔽 복원 직후 실제 내용 미리보기 로그
+            log_room_preview(key, room)
         except YDocNotFound:
             logger.info(f"[preload] no previous updates for key='{key}'")
         room.ready = True
@@ -94,6 +192,7 @@ async def preload_rooms():
 
 
 websocket_server.get_room = MethodType(_custom_get_room, websocket_server)
+
 
 # FastAPI 앱
 # 교체 (복붙)
