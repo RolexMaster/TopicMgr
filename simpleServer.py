@@ -8,7 +8,9 @@ from typing import Tuple, Optional, Callable, Any
 
 from fastapi import FastAPI, WebSocket, HTTPException
 from fastapi.responses import FileResponse
+
 from pycrdt_websocket import WebsocketServer
+from pycrdt_websocket.yroom import YRoom
 from pycrdt import Doc, Text  # 누적 디코딩 및 통계 계산용
 
 # -------------------------
@@ -16,6 +18,8 @@ from pycrdt import Doc, Text  # 누적 디코딩 및 통계 계산용
 # -------------------------
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+DATA_DIR = BASE_DIR / "data" / "rooms"   # 방별 스냅샷 저장 위치
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -24,6 +28,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("yws")
 logger.setLevel(logging.DEBUG)  # 디버깅 중엔 DEBUG, 안정화되면 INFO
+
+# ✅ 서버 준비 플래그 (로드 끝나기 전 접속 차단용)
+APP_READY = asyncio.Event()
 
 # -------------------------
 # y-websocket 프레임 요약 파서
@@ -73,7 +80,6 @@ def parse_ws_frame(frame: bytes) -> dict:
         else:
             return {"type": f"unknown({msg_type})"}
     except Exception as e:
-        # 파싱 실패 시 요약 에러만
         try:
             head_hex = (bytes(frame)[:32]).hex()
         except Exception:
@@ -98,7 +104,7 @@ def _get_debug_ytext(room: str) -> tuple[Doc, Text]:
     return _debug_docs[room]
 
 def humanize_update_room(room: str, update_bytes: bytes) -> list[dict]:
-    """룸별 Doc에 업데이트 누적 적용하면서 delta 반환"""
+    """룸별 Doc에 업데이트 누적 적용하면서 delta 반환 (디버그 전용 Doc 사용)"""
     doc, yxml = _get_debug_ytext(room)
     deltas: list[dict] = []
 
@@ -116,32 +122,116 @@ def humanize_update_room(room: str, update_bytes: bytes) -> list[dict]:
     return deltas
 
 def get_debug_tail(room: str, n: int = 120) -> str:
-    """현재 누적 상태 꼬리 n글자 (사람 확인용)"""
+    """현재 누적 상태 꼬리 n글자 (사람 확인용) — 디버그 Doc 기준"""
     _, yxml = _get_debug_ytext(room)
     try:
-        s = yxml.to_string()
+        s = str(yxml)  # Text.__str__ 트랜잭션으로 안전히 문자열화
     except Exception:
-        s = str(yxml)
+        s = ""
     return s[-n:]
 
 # -------------------------
-# 메모리 통계 캐시 (파일 저장 없이 서버 반영 확인)
+# 간단 영속화: 파일 저장/로드
 # -------------------------
-_room_stats: dict[str, dict] = {}  # room -> {"text_chars":int, "text_utf8_bytes":int, "bytes_full_update":int}
+def _room_to_filename(room: str) -> Path:
+    # 파일 안전화를 위해 슬래시 등을 치환
+    safe = room.replace("/", "__")
+    return DATA_DIR / f"{safe}.bin"
+
+def save_room_snapshot(room: str) -> None:
+    """디버그 Doc의 전체 스냅샷을 파일로 저장 (atomic)"""
+    doc, _ = _get_debug_ytext(room)
+    empty_sv = Doc().get_state()
+    full_update = doc.get_update(empty_sv)
+    tmp = _room_to_filename(room).with_suffix(".bin.tmp")
+    dst = _room_to_filename(room)
+    try:
+        tmp.write_bytes(full_update)
+        os.replace(tmp, dst)  # atomic
+        logger.debug("PERSIST room=%s wrote %s bytes -> %s", room, len(full_update), dst.name)
+    except Exception as e:
+        logger.warning("PERSIST room=%s failed: %s", room, e)
+        try:
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+def load_room_snapshot_bytes(room: str) -> Optional[bytes]:
+    """스냅샷 파일을 읽어서 raw bytes 반환. 없으면 None."""
+    f = _room_to_filename(room)
+    if not f.exists():
+        return None
+    try:
+        return f.read_bytes()
+    except Exception as e:
+        logger.warning("READ room=%s failed: %s", room, e)
+        return None
+
+def load_room_snapshot_into_memory(room: str) -> bool:
+    """파일이 있으면 디버그 Doc에 적용 (디버그용 상태 누적)."""
+    data = load_room_snapshot_bytes(room)
+    if data is None:
+        return False
+    try:
+        doc, _ = _get_debug_ytext(room)
+        doc.apply_update(data)
+        tail = get_debug_tail(room, 120)
+        logger.info("LOAD room=%s bytes=%s tail=%r", room, len(data), tail)
+        return True
+    except Exception as e:
+        logger.warning("LOAD room=%s failed: %s", room, e)
+        return False
 
 # -------------------------
-# WebSocket server & FastAPI
+# WebSocket server (라이브 룸 선생성 지원)
 # -------------------------
 ws_server = WebsocketServer()
 
+def precreate_live_room_from_bytes(room: str, update: bytes) -> None:
+    """스냅샷 바이트로 라이브 룸을 미리 만들어 등록."""
+    if room in ws_server.rooms:
+        return
+    try:
+        yroom = YRoom()                    # 빈 ydoc 포함
+        yroom.ydoc.apply_update(update)    # 스냅샷 주입
+        ws_server.rooms[room] = yroom      # 키는 WSAdapter.path와 동일해야 함: room
+        logger.info("PRECREATE room=%s bytes=%d", room, len(update))
+    except Exception as e:
+        logger.warning("PRECREATE room=%s failed: %s", room, e)
+
+def preload_all_rooms_from_disk() -> None:
+    """서버 기동 시 파일 → 디버그 Doc 누적 + 라이브 룸 선생성(즉시 동기화용)."""
+    for f in DATA_DIR.glob("*.bin"):
+        room = f.stem.replace("__", "/")
+        try:
+            data = f.read_bytes()
+
+            # 1) 디버그 Doc에 누적 (사이즈/내용 확인용)
+            doc, _ = _get_debug_ytext(room)
+            doc.apply_update(data)
+            tail = get_debug_tail(room, 120)
+            logger.info("LOAD room=%s bytes=%d tail=%r", room, len(data), tail)
+
+            # 2) 라이브 룸 선생성 (클라 최초 접속 시 지연 없이 동기화)
+            precreate_live_room_from_bytes(room, data)
+        except Exception as e:
+            logger.warning("LOAD room=%s failed: %s", room, e)
+
+# -------------------------
+# FastAPI (lifespan)
+# -------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(ws_server.start())
+    # 서버 시작 시 디스크에 있던 모든 방을 미리 메모리로 로드 + 라이브 룸 선생성
+    preload_all_rooms_from_disk()
+    task_server = asyncio.create_task(ws_server.start())
+    APP_READY.set()  # ✅ 준비 완료 신호: 이 시점부터 WebSocket 수락
     try:
         yield
     finally:
         await ws_server.stop()
-        await task
+        await task_server
 
 app = FastAPI(title="Yjs WebSocket (pycrdt-websocket)", lifespan=lifespan)
 
@@ -149,15 +239,22 @@ app = FastAPI(title="Yjs WebSocket (pycrdt-websocket)", lifespan=lifespan)
 async def root():
     return FileResponse(STATIC_DIR / "simpleClient.html")
 
+# (선택) 준비 상태 확인용
+@app.get("/ready")
+def ready():
+    return {"ready": APP_READY.is_set()}
+
 @app.get("/sizes/{room}")
 async def sizes(room: str):
-    # 우리 쪽 디버그 누적 Doc 사용 (room별)
+    """
+    파일로부터 미리 로드된 디버그 Doc 기준으로 상태 크기/꼬리 반환.
+    (라이브 ydoc은 다른 스레드에서 돌 수 있으므로 직접 접근하지 않음)
+    """
+    # 혹시라도 디버그 Doc이 아직 비어있으면 1회성 로드 시도
+    _ = load_room_snapshot_into_memory(room)
+
     doc, yxml = _get_debug_ytext(room)
-
-    # 내용 문자열
-    text = str(yxml)  # to_string() 없음. __str__ 이 트랜잭션 열어서 안전하게 문자열 만듦
-
-    # 풀업데이트 크기(빈 state 대비): 디버그 Doc 기준
+    text = str(yxml)  # 안전한 문자열화
     empty_sv = Doc().get_state()
     full_update = doc.get_update(empty_sv)
 
@@ -166,9 +263,8 @@ async def sizes(room: str):
         "text_chars": len(text),
         "text_utf8_bytes": len(text.encode("utf-8")),
         "bytes_full_update": len(full_update),
-        "tail": text[-200:],  # 확인용 꼬리
+        "tail": text[-200:],
     }
-
 
 # -------------------------
 # Starlette WebSocket -> pycrdt_websocket 어댑터
@@ -196,8 +292,8 @@ class WSAdapter:
         self._ws = ws
 
         self.room = room
-        # pycrdt_websocket.WebsocketServer는 websocket.path를 룸키로 씁니다.
-        # '/ws/<room>' 대신 'room' 딱 하나만 쓰도록 고정해서 키 충돌/혼란 방지
+        # pycrdt_websocket.WebsocketServer는 websocket.path를 룸키로 사용.
+        # '/ws/<room>' 대신 'room' 하나로 고정(키 혼란 방지)
         self.path = room
 
         self.logger = logger or logging.getLogger("yws")
@@ -249,7 +345,7 @@ class WSAdapter:
 
                         if self.log_delta and self.delta_fn and info.get("type") == "sync" \
                            and info.get("sub") in ("update", "step2") and "update" in info:
-                            # 델타 추출 + 상태 꼬리 로그
+                            # 델타 추출 + 상태 꼬리 로그 (디버그 Doc 기준)
                             try:
                                 deltas = self.delta_fn(info["update"])
                                 self.logger.info(
@@ -267,18 +363,19 @@ class WSAdapter:
                                     self.room, e, info.get("update_len")
                                 )
 
-                            # ✅ 파일 저장 없이 “서버 반영 여부/사이즈” 메모리 캐시로 기록
+                            # ✅ 실제 변경이 있을 때만 파일 스냅샷 저장
                             try:
-                                dbg_doc, dbg_text = _get_debug_ytext(self.room)
-                                s = dbg_text.to_string()
-                                full = dbg_doc.get_update(Doc().get_state())  # 빈 상태 대비 전체 스냅샷
-                                _room_stats[self.room] = {
-                                    "text_chars": len(s),
-                                    "text_utf8_bytes": len(s.encode("utf-8")),
-                                    "bytes_full_update": len(full),
-                                }
+                                should_persist = False
+                                if info.get("sub") == "update":
+                                    should_persist = True  # 클라 변경
+                                elif info.get("sub") == "step2":
+                                    # step2라도 유효 바이트 + 델타가 있으면 저장
+                                    should_persist = bool(info.get("update_len", 0) > 0 and deltas)
+
+                                if should_persist:
+                                    save_room_snapshot(self.room)
                             except Exception as e:
-                                self.logger.debug("STATS room=%s fail=%s", self.room, e)
+                                self.logger.debug("PERSIST-SKIP room=%s reason=%s", self.room, e)
 
                         else:
                             self.logger.debug("RX room=%s %s", self.room, info)
@@ -306,13 +403,24 @@ class WSAdapter:
 # -------------------------
 @app.websocket("/ws/{room:path}")
 async def ws_endpoint(ws: WebSocket, room: str):
+    # 🔐 준비될 때까지는 접속 거절(최대 3초 대기 후 1013)
+    if not APP_READY.is_set():
+        try:
+            await asyncio.wait_for(APP_READY.wait(), timeout=10)
+        except asyncio.TimeoutError:
+            await ws.close(code=1013)  # Try Again Later
+            return
+
     await ws.accept()
+
+    # ⚠️ 선로딩을 기동 시에 수행하므로 여기서는 별도 로드/주입 안 함.
+
     adapter = WSAdapter(
         ws, room, logger,
         log_wire=True,
         log_delta=True,
         parse_fn=parse_ws_frame,
-        # 룸별 누적 디코딩을 위해 room 캡처
+        # 룸별 누적 디코딩을 위해 room 캡처 (디버그 Doc 사용)
         delta_fn=lambda upd, r=room: humanize_update_room(r, upd),
     )
     try:
