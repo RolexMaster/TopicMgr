@@ -32,6 +32,9 @@ logger.setLevel(logging.DEBUG)  # 디버깅 중엔 DEBUG, 안정화되면 INFO
 # ✅ 서버 준비 플래그 (로드 끝나기 전 접속 차단용)
 APP_READY = asyncio.Event()
 
+# ✅ 자동 로드 패치 적용 여부
+AUTOLOAD_PATCHED = False
+
 # -------------------------
 # y-websocket 프레임 요약 파서
 # -------------------------
@@ -107,8 +110,10 @@ def humanize_update_room(room: str, update_bytes: bytes) -> list[dict]:
     """룸별 Doc에 업데이트 누적 적용하면서 delta 반환 (디버그 전용 Doc 사용)"""
     doc, yxml = _get_debug_ytext(room)
     deltas: list[dict] = []
+
     def on_text(ev):
-        deltas.extend(ev.delta)
+        deltas.extend(ev.delta)  # [{'retain':..},{'insert':'..'},{'delete':..}]
+
     yxml.observe(on_text)
     try:
         doc.apply_update(update_bytes)
@@ -132,6 +137,7 @@ def get_debug_tail(room: str, n: int = 120) -> str:
 # 간단 영속화: 파일 저장/로드
 # -------------------------
 def _room_to_filename(room: str) -> Path:
+    # 파일 안전화를 위해 슬래시 등을 치환
     safe = room.replace("/", "__")
     return DATA_DIR / f"{safe}.bin"
 
@@ -181,7 +187,7 @@ def load_room_snapshot_into_memory(room: str) -> bool:
         return False
 
 # -------------------------
-# WebSocket server (라이브 룸 선생성 지원)
+# WebSocket server (라이브 룸 생성 시 자동 로드 패치)
 # -------------------------
 ws_server = WebsocketServer()
 
@@ -198,32 +204,69 @@ def precreate_live_room_from_bytes(room: str, update: bytes) -> None:
         logger.warning("PRECREATE room=%s failed: %s", room, e)
 
 def ensure_live_room_preloaded(room: str) -> bool:
-    """
-    라이브 룸이 없으면 디스크 스냅샷을 읽어 즉시 PRECREATE.
-    (ws 진입 시 세이프가드)
-    """
+    """엔드포인트 폴백용: 방이 없으면 스냅샷으로 즉시 생성."""
     if room in ws_server.rooms:
         return True
     data = load_room_snapshot_bytes(room)
     if not data:
-        logger.debug("ENSURE room=%s no snapshot on disk", room)
         return False
     precreate_live_room_from_bytes(room, data)
     return True
 
+def patch_ws_server_autoload() -> bool:
+    """
+    WebsocketServer가 방을 '생성'하는 순간 디스크 스냅샷을 자동 주입하도록
+    내부 메서드를 안전하게 패치. (버전에 따라 메서드명이 다를 수 있어 다중 시도)
+    """
+    global AUTOLOAD_PATCHED
+
+    candidates = ["_get_or_create_room", "get_or_create_room"]
+    for name in candidates:
+        orig = getattr(ws_server, name, None)
+        if not callable(orig):
+            continue
+
+        def patched(self, path, _orig=orig):
+            room = self.rooms.get(path)
+            if room is None:
+                # 새 방 생성 직전에 스냅샷 찾아서 주입
+                data = load_room_snapshot_bytes(path)
+                room = YRoom()
+                if data:
+                    try:
+                        room.ydoc.apply_update(data)
+                        logger.info("AUTOLOAD room=%s bytes=%d (on create)", path, len(data))
+                    except Exception as e:
+                        logger.warning("AUTOLOAD room=%s failed: %s", path, e)
+                else:
+                    logger.debug("AUTOLOAD room=%s no snapshot; creating empty", path)
+                self.rooms[path] = room
+            return room
+
+        # 메서드 바인딩
+        setattr(ws_server, name, patched.__get__(ws_server, WebsocketServer))
+        AUTOLOAD_PATCHED = True
+        logger.info("Patched WebsocketServer.%s for autoload", name)
+        break
+
+    if not AUTOLOAD_PATCHED:
+        logger.warning("Autoload patch failed: method not found; will fallback to endpoint ensure().")
+
+    return AUTOLOAD_PATCHED
+
 def preload_all_rooms_from_disk() -> None:
-    """파일 → 디버그 Doc 누적 + 라이브 룸 선생성(즉시 동기화용)."""
+    """
+    서버 기동 시: 디버그 Doc에만 누적(사이즈/미리보기용).
+    라이브 룸은 '생성 시 자동 로드' 패치가 처리하므로 여기서 굳이 만들 필요 없음.
+    """
     for f in DATA_DIR.glob("*.bin"):
         room = f.stem.replace("__", "/")
         try:
             data = f.read_bytes()
-            # 1) 디버그 Doc 누적
             doc, _ = _get_debug_ytext(room)
             doc.apply_update(data)
             tail = get_debug_tail(room, 120)
             logger.info("LOAD room=%s bytes=%d tail=%r", room, len(data), tail)
-            # 2) 라이브 룸 선생성
-            precreate_live_room_from_bytes(room, data)
         except Exception as e:
             logger.warning("LOAD room=%s failed: %s", room, e)
 
@@ -232,14 +275,13 @@ def preload_all_rooms_from_disk() -> None:
 # -------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1) 서버 백그라운드 태스크 먼저 띄우고
-    task_server = asyncio.create_task(ws_server.start())
-    # 2) 아주 짧게 양보해 내부 초기화 기회를 준 뒤
-    await asyncio.sleep(0.05)
-    # 3) 이제 디스크에서 선로딩 + 라이브 룸 주입
+    # 1) 방 생성 시 자동 로드 패치
+    patch_ws_server_autoload()
+    # 2) 디버그 Doc에만 선로딩 (라이브 룸은 생성 시 자동)
     preload_all_rooms_from_disk()
-    # 4) 준비 완료
-    APP_READY.set()
+    # 3) 서버 시작
+    task_server = asyncio.create_task(ws_server.start())
+    APP_READY.set()  # ✅ 준비 완료 신호: 이 시점부터 WebSocket 수락
     try:
         yield
     finally:
@@ -255,7 +297,7 @@ async def root():
 # (선택) 준비 상태 확인용
 @app.get("/ready")
 def ready():
-    return {"ready": APP_READY.is_set()}
+    return {"ready": APP_READY.is_set(), "autoload_patched": AUTOLOAD_PATCHED}
 
 @app.get("/sizes/{room}")
 async def sizes(room: str):
@@ -263,11 +305,14 @@ async def sizes(room: str):
     파일로부터 미리 로드된 디버그 Doc 기준으로 상태 크기/꼬리 반환.
     (라이브 ydoc은 다른 스레드에서 돌 수 있으므로 직접 접근하지 않음)
     """
-    _ = load_room_snapshot_into_memory(room)  # 혹시 비어있으면 1회성 로드
+    # 혹시라도 디버그 Doc이 아직 비어있으면 1회성 로드 시도
+    _ = load_room_snapshot_into_memory(room)
+
     doc, yxml = _get_debug_ytext(room)
     text = str(yxml)  # 안전한 문자열화
     empty_sv = Doc().get_state()
     full_update = doc.get_update(empty_sv)
+
     return {
         "room": room,
         "text_chars": len(text),
@@ -328,27 +373,33 @@ class WSAdapter:
             data = bytes(data)
         elif not isinstance(data, (bytes,)):
             data = bytes(str(data), "utf-8")
+
         if self.log_wire and self.parse_fn:
             try:
                 info = self.parse_fn(data)
                 self.logger.debug("TX room=%s %s", self.room, info)
             except Exception as e:
                 self.logger.debug("TX room=%s parse_err=%s len=%s", self.room, e, len(data))
+
         await self._send_asgi({"type": "websocket.send", "bytes": data})
 
     async def recv(self) -> bytes:
         while True:
             evt = await self._recv_asgi()
             t = evt["type"]
+
             if t == "websocket.receive":
                 b = evt.get("bytes")
                 if b is None:
                     b = evt.get("text", "").encode("utf-8")
+
                 if self.log_wire and self.parse_fn:
                     try:
                         info = self.parse_fn(b)
+
                         if self.log_delta and self.delta_fn and info.get("type") == "sync" \
                            and info.get("sub") in ("update", "step2") and "update" in info:
+                            # 델타 추출 + 상태 꼬리 로그 (디버그 Doc 기준)
                             try:
                                 deltas = self.delta_fn(info["update"])
                                 self.logger.info(
@@ -365,26 +416,34 @@ class WSAdapter:
                                     "RX room=%s delta_fail=%s ulen=%s",
                                     self.room, e, info.get("update_len")
                                 )
-                            # 변경 시에만 스냅샷 저장
+
+                            # ✅ 실제 변경이 있을 때만 파일 스냅샷 저장
                             try:
                                 should_persist = False
                                 if info.get("sub") == "update":
-                                    should_persist = True
+                                    should_persist = True  # 클라 변경
                                 elif info.get("sub") == "step2":
+                                    # step2라도 유효 바이트 + 델타가 있으면 저장
                                     should_persist = bool(info.get("update_len", 0) > 0 and deltas)
+
                                 if should_persist:
                                     save_room_snapshot(self.room)
                             except Exception as e:
                                 self.logger.debug("PERSIST-SKIP room=%s reason=%s", self.room, e)
+
                         else:
                             self.logger.debug("RX room=%s %s", self.room, info)
                     except Exception as e:
                         self.logger.debug("RX room=%s parse_err=%s len=%s", self.room, e, len(b))
+
                 return b
+
             if t == "websocket.disconnect":
                 code = evt.get("code")
                 self.logger.info("WS DISCONNECT room=%s code=%s", self.room, code)
                 raise RuntimeError(f"disconnect {code}")
+
+            # ping/pong 등은 무시
             self.logger.debug("WS EVENT room=%s type=%s (ignored)", self.room, t)
 
     async def close(self) -> None:
@@ -403,15 +462,16 @@ async def ws_endpoint(ws: WebSocket, room: str):
         try:
             await asyncio.wait_for(APP_READY.wait(), timeout=10)
         except asyncio.TimeoutError:
-            logger.warning("WS REFUSE room=%s reason=server_not_ready code=1013", room)
+            logger.warning("WS REJECT room=%s code=1013 reason=server not ready", room)
             await ws.close(code=1013)  # Try Again Later
             return
 
-    # 접속 직전, 라이브 룸 보장(디스크 스냅샷이 있으면 즉시 주입)
-    if ensure_live_room_preloaded(room):
-        logger.debug("ENSURE OK room=%s (live room present before accept)", room)
-    else:
-        logger.debug("ENSURE SKIP room=%s (no snapshot found)", room)
+    # 패치 실패 시에만 폴백 ensure
+    if not AUTOLOAD_PATCHED:
+        if ensure_live_room_preloaded(room):
+            logger.debug("ENSURE OK room=%s (fallback before accept)", room)
+        else:
+            logger.debug("ENSURE SKIP room=%s (no snapshot found; fallback)", room)
 
     await ws.accept()
 
