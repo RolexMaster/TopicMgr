@@ -51,15 +51,23 @@
         document.getElementById('stat').textContent = `상태: ${e.status}`;
       });
 
-      // 최초 동기화 후 textarea 초기값 반영
-      provider.once('sync', (synced) => {
-        if (!synced) return;
-        if (yxml.toString().trim().length === 0) {
-          ydoc.transact(() => yxml.insert(0, '<root/>\n'));
-        }
-        lastXML = yxml.toString();
+    provider.once('sync', (synced) => {
+    if (!synced) return;
+
+    // 서버 상태가 전부 반영된 다음 틱에 검사
+    setTimeout(() => {
+        const s = yxml.toString();
+        if (s.length === 0) {
+        ydoc.transact(() => yxml.insert(0, '<root/>\n'));
+        lastXML = '<root/>\n';
+        ta.value = lastXML;
+        } else {
+        lastXML = s;
         applyFromY();
-      });
+        }
+    }, 0);
+    });
+
 
       // 원격/로컬 모든 변경 → textarea 반영
       yxml.observe(() => {
