@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>XML 협업 (최소)</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #xml { width: 100%; height: 60vh; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    #stat { margin-left: 8px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <p>
+    Room: <input id="room" value="testroom" />
+    <button id="join">입장</button>
+    <span id="stat">연결 안 됨</span>
+  </p>
+
+  <textarea id="xml" placeholder="여기에 XML을 입력하세요"></textarea>
+
+  <script type="module">
+    import * as Y from 'https://esm.sh/yjs@13.6.27';
+    import { WebsocketProvider } from 'https://esm.sh/y-websocket@3.0.0';
+
+    let ydoc, yxml, provider;
+    let isComposing = false;        // IME(한글) 조합 중
+    let isApplyingRemote = false;   // 원격 반영 중 에코 방지
+    let lastXML = '';               // 마지막 XML 문자열(로컬 기준)
+
+    const ta = document.getElementById('xml');
+    document.getElementById('join').onclick = join;
+
+    function join() {
+      const room = document.getElementById('room').value.trim();
+      if (!room) return;
+
+      ydoc = new Y.Doc();
+      yxml = ydoc.getText('xml');
+
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = `${proto}//${location.host}/ws`; // 서버의 /ws + room 조합
+
+      provider = new WebsocketProvider(url, room, ydoc, { connect: false });
+
+      // 연결 열리면 무조건 바이너리로 강제 (서버 디코더 안전)
+      provider.on('connection-open', () => {
+        if (provider.ws) provider.ws.binaryType = 'arraybuffer';
+      });
+
+      provider.on('status', e => {
+        document.getElementById('stat').textContent = `상태: ${e.status}`;
+      });
+
+      // 최초 동기화 후 textarea 초기값 반영
+      provider.once('sync', (synced) => {
+        if (!synced) return;
+        if (yxml.toString().trim().length === 0) {
+          ydoc.transact(() => yxml.insert(0, '<root/>\n'));
+        }
+        lastXML = yxml.toString();
+        applyFromY();
+      });
+
+      // 원격/로컬 모든 변경 → textarea 반영
+      yxml.observe(() => {
+        if (isComposing) return;
+        const s = yxml.toString();
+        if (ta.value !== s) {
+          isApplyingRemote = true;
+          ta.value = s;
+          isApplyingRemote = false;
+          lastXML = s;
+        }
+      });
+
+      initTextareaBinding();
+      provider.connect();
+    }
+
+    function initTextareaBinding() {
+      ta.addEventListener('compositionstart', () => { isComposing = true; });
+      ta.addEventListener('compositionend', () => { isComposing = false; syncFromTextarea(); });
+      ta.addEventListener('input', () => {
+        if (isApplyingRemote || isComposing) return;
+        syncFromTextarea();
+      });
+    }
+
+    // Y.Text → textarea
+    function applyFromY() {
+      if (isComposing) return;
+      const s = yxml.toString();
+      if (ta.value !== s) {
+        isApplyingRemote = true;
+        ta.value = s;
+        isApplyingRemote = false;
+      }
+    }
+
+    // textarea → Y.Text (IME 안전 diff)
+    function syncFromTextarea() {
+      const oldStr = lastXML;
+      const newStr = ta.value;
+      if (oldStr === newStr) return;
+
+      // 공통 prefix
+      let p = 0;
+      const minLen = Math.min(oldStr.length, newStr.length);
+      while (p < minLen && oldStr.charCodeAt(p) === newStr.charCodeAt(p)) p++;
+
+      // 공통 suffix
+      let oldEnd = oldStr.length - 1;
+      let newEnd = newStr.length - 1;
+      while (oldEnd >= p && newEnd >= p &&
+             oldStr.charCodeAt(oldEnd) === newStr.charCodeAt(newEnd)) {
+        oldEnd--; newEnd--;
+      }
+
+      const deleteLen = (oldEnd - p + 1);
+      const insertText = newStr.slice(p, newEnd + 1);
+
+      ydoc.transact(() => {
+        if (deleteLen > 0) yxml.delete(p, deleteLen);
+        if (insertText.length > 0) yxml.insert(p, insertText);
+      });
+
+      lastXML = newStr;
+    }
+  </script>
+</body>
+</html>
