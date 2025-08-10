@@ -34,8 +34,9 @@ if [ -f ".env" ]; then
     export $(grep -v '^#' .env | xargs)
 fi
 
+mkdir -p /home/data/rooms || true
+
 # 서버 시작
 echo "🏃 Starting server..."
 echo "📄 HTTP Port: ${PORT:-8000}"
-echo "🔌 WebSocket Port: ${WEBSOCKET_PORT:-8765}"
 python3 simpleServer.py

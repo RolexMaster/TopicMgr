@@ -18,7 +18,8 @@ from pycrdt import Doc, Text  # 누적 디코딩 및 통계 계산용
 # -------------------------
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-DATA_DIR = BASE_DIR / "data" / "rooms"   # 방별 스냅샷 저장 위치
+
+DATA_DIR = Path(os.environ.get("ROOM_DATA_DIR", "/home/data/rooms"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -28,6 +29,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("yws")
 logger.setLevel(logging.DEBUG)  # 디버깅 중엔 DEBUG, 안정화되면 INFO
+logger.info("DATA_DIR = %s (Azure: only /home is persisted)", DATA_DIR)
 
 # ✅ 서버 준비 플래그 (로드 끝나기 전 접속 차단용)
 APP_READY = asyncio.Event()
