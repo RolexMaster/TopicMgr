@@ -213,44 +213,65 @@ def ensure_live_room_preloaded(room: str) -> bool:
     precreate_live_room_from_bytes(room, data)
     return True
 
+import inspect
+
 def patch_ws_server_autoload() -> bool:
     """
-    WebsocketServer가 방을 '생성'하는 순간 디스크 스냅샷을 자동 주입하도록
-    내부 메서드를 안전하게 패치. (버전에 따라 메서드명이 다를 수 있어 다중 시도)
+    방 생성 시 디스크 스냅샷을 자동 주입.
+    원본 메서드를 래핑하여(비동기/동기 모두 지원) 새로 만든 방에만 주입.
     """
     global AUTOLOAD_PATCHED
 
-    candidates = ["_get_or_create_room", "get_or_create_room"]
+    candidates = [
+        "_get_or_create_room",
+        "get_or_create_room",
+        "get_room",
+        "room",
+    ]
+
     for name in candidates:
         orig = getattr(ws_server, name, None)
         if not callable(orig):
             continue
 
-        def patched(self, path, _orig=orig):
-            room = self.rooms.get(path)
-            if room is None:
-                # 새 방 생성 직전에 스냅샷 찾아서 주입
-                data = load_room_snapshot_bytes(path)
-                room = YRoom()
-                if data:
-                    try:
-                        room.ydoc.apply_update(data)
-                        logger.info("AUTOLOAD room=%s bytes=%d (on create)", path, len(data))
-                    except Exception as e:
-                        logger.warning("AUTOLOAD room=%s failed: %s", path, e)
-                else:
-                    logger.debug("AUTOLOAD room=%s no snapshot; creating empty", path)
-                self.rooms[path] = room
-            return room
+        if inspect.iscoroutinefunction(orig):
+            async def patched(self, path, *args, _orig=orig, **kwargs):
+                existed = path in self.rooms
+                room = await _orig(path, *args, **kwargs)   # ✅ await!
+                if not existed:
+                    data = load_room_snapshot_bytes(path)
+                    if data:
+                        try:
+                            room.ydoc.apply_update(data)
+                            logger.info("AUTOLOAD room=%s bytes=%d (async wrapped %s)", path, len(data), _orig.__name__)
+                        except Exception as e:
+                            logger.warning("AUTOLOAD room=%s failed: %s", path, e)
+                    else:
+                        logger.debug("AUTOLOAD room=%s no snapshot; created empty (async %s)", path, _orig.__name__)
+                return room
+        else:
+            def patched(self, path, *args, _orig=orig, **kwargs):
+                existed = path in self.rooms
+                room = _orig(path, *args, **kwargs)         # sync call
+                if not existed:
+                    data = load_room_snapshot_bytes(path)
+                    if data:
+                        try:
+                            room.ydoc.apply_update(data)
+                            logger.info("AUTOLOAD room=%s bytes=%d (wrapped %s)", path, len(data), _orig.__name__)
+                        except Exception as e:
+                            logger.warning("AUTOLOAD room=%s failed: %s", path, e)
+                    else:
+                        logger.debug("AUTOLOAD room=%s no snapshot; created empty (wrapped %s)", path, _orig.__name__)
+                return room
 
-        # 메서드 바인딩
-        setattr(ws_server, name, patched.__get__(ws_server, WebsocketServer))
+        setattr(ws_server, name, patched.__get__(ws_server, type(ws_server)))
         AUTOLOAD_PATCHED = True
-        logger.info("Patched WebsocketServer.%s for autoload", name)
+        logger.info("Patched WebsocketServer.%s for autoload (async-aware)", name)
         break
 
     if not AUTOLOAD_PATCHED:
-        logger.warning("Autoload patch failed: method not found; will fallback to endpoint ensure().")
+        logger.warning("Autoload patch failed: no matching method; will fallback to endpoint ensure().")
 
     return AUTOLOAD_PATCHED
 
@@ -466,12 +487,12 @@ async def ws_endpoint(ws: WebSocket, room: str):
             await ws.close(code=1013)  # Try Again Later
             return
 
-    # 패치 실패 시에만 폴백 ensure
-    if not AUTOLOAD_PATCHED:
-        if ensure_live_room_preloaded(room):
-            logger.debug("ENSURE OK room=%s (fallback before accept)", room)
-        else:
-            logger.debug("ENSURE SKIP room=%s (no snapshot found; fallback)", room)
+    # # 패치 실패 시에만 폴백 ensure
+    # if not AUTOLOAD_PATCHED:
+    #     if ensure_live_room_preloaded(room):
+    #         logger.debug("ENSURE OK room=%s (fallback before accept)", room)
+    #     else:
+    #         logger.debug("ENSURE SKIP room=%s (no snapshot found; fallback)", room)
 
     await ws.accept()
 

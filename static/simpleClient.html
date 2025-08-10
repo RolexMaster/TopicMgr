@@ -17,123 +17,195 @@
   </p>
 
   <textarea id="xml" placeholder="여기에 XML을 입력하세요"></textarea>
+<script type="module">
+  import * as Y from 'https://esm.sh/yjs@13.6.27';
+  import { WebsocketProvider } from 'https://esm.sh/y-websocket@3.0.0';
 
-  <script type="module">
-    import * as Y from 'https://esm.sh/yjs@13.6.27';
-    import { WebsocketProvider } from 'https://esm.sh/y-websocket@3.0.0';
+  let ydoc, yxml, provider;
+  let isComposing = false;
+  let isApplyingRemote = false;
+  let lastXML = '';
+  let reconnecting = false; // 재연결 루프 중복 방지
 
-    let ydoc, yxml, provider;
-    let isComposing = false;        // IME(한글) 조합 중
-    let isApplyingRemote = false;   // 원격 반영 중 에코 방지
-    let lastXML = '';               // 마지막 XML 문자열(로컬 기준)
+  const ta = document.getElementById('xml');
+  document.getElementById('join').onclick = join;
 
-    const ta = document.getElementById('xml');
-    document.getElementById('join').onclick = join;
-
-    function join() {
-      const room = document.getElementById('room').value.trim();
-      if (!room) return;
-
-      ydoc = new Y.Doc();
-      yxml = ydoc.getText('xml');
-
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const url = `${proto}//${location.host}/ws`; // 서버의 /ws + room 조합
-
-      provider = new WebsocketProvider(url, room, ydoc, { connect: false });
-
-      // 연결 열리면 무조건 바이너리로 강제 (서버 디코더 안전)
-      provider.on('connection-open', () => {
-        if (provider.ws) provider.ws.binaryType = 'arraybuffer';
-      });
-
-      provider.on('status', e => {
-        document.getElementById('stat').textContent = `상태: ${e.status}`;
-      });
-
-    provider.once('sync', (synced) => {
-    if (!synced) return;
-
-    // 서버 상태가 전부 반영된 다음 틱에 검사
-    setTimeout(() => {
-        const s = yxml.toString();
-        if (s.length === 0) {
-        ydoc.transact(() => yxml.insert(0, '<root/>\n'));
-        lastXML = '<root/>\n';
-        ta.value = lastXML;
-        } else {
-        lastXML = s;
-        applyFromY();
+  async function waitServerReady(maxTotalMs = 30000, startIntervalMs = 800, maxIntervalMs = 5000) {
+    let elapsed = 0;
+    let interval = startIntervalMs;
+    while (elapsed < maxTotalMs) {
+      try {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 1200); // 요청당 1.2s 타임아웃
+        const r = await fetch('/ready', { cache: 'no-store', signal: ctrl.signal });
+        clearTimeout(tid);
+        if (r.ok) {
+          const j = await r.json();
+          if (j.ready) return true;
         }
-    }, 0);
+      } catch (_) {}
+      await new Promise(r => setTimeout(r, interval));
+      elapsed += interval;
+      // 지수 백오프 + 약간의 지터
+      interval = Math.min(maxIntervalMs, Math.round(interval * 1.5 + Math.random() * 200));
+    }
+    return false;
+  }
+
+  function buildProvider(room) {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${proto}//${location.host}/ws`;
+    const p = new WebsocketProvider(url, room, ydoc, {
+      connect: false,
+      disableBc: true,             // 불필요한 브로드캐스트 채널 비활성
+    });
+    return p;
+  }
+
+  function wireProviderEvents() {
+    // 바이너리 강제
+    provider.on('connection-open', () => {
+      if (provider.ws) provider.ws.binaryType = 'arraybuffer';
     });
 
+    provider.on('status', e => {
+      document.getElementById('stat').textContent = `상태: ${e.status}`;
+    });
 
-      // 원격/로컬 모든 변경 → textarea 반영
-      yxml.observe(() => {
-        if (isComposing) return;
+    // 처음 sync 완료 후, 비어있으면 <root/>\n 삽입
+    provider.once('sync', (synced) => {
+      if (!synced) return;
+      setTimeout(() => {
         const s = yxml.toString();
-        if (ta.value !== s) {
-          isApplyingRemote = true;
-          ta.value = s;
-          isApplyingRemote = false;
+        if (s.length === 0) {
+          ydoc.transact(() => yxml.insert(0, '<root/>\n'));
+          lastXML = '<root/>\n';
+          ta.value = lastXML;
+        } else {
           lastXML = s;
+          applyFromY();
         }
-      });
+      }, 0);
+    });
 
-      initTextareaBinding();
+    // 연결 끊김 / 에러 → 단일 재연결 루프
+    const onClosedOrError = async () => {
+      if (reconnecting) return;
+      reconnecting = true;
+
+      // 기존 provider 완전 정리
+      try { provider.shouldConnect = false; } catch {}
+      try { provider.disconnect(); } catch {}
+      try { provider.destroy(); } catch {}
+      provider = null;
+
+      document.getElementById('stat').textContent = '재연결 대기(서버 준비 중)...';
+      const ok = await waitServerReady(30000, 800, 5000);
+      if (!ok) {
+        document.getElementById('stat').textContent = '서버 준비 실패';
+        reconnecting = false;
+        return;
+      }
+
+      // 같은 ydoc로 새 provider 생성
+      const room = document.getElementById('room').value.trim();
+      provider = buildProvider(room);
+      wireProviderEvents();
       provider.connect();
+
+      reconnecting = false;
+    };
+
+    provider.on('connection-close', onClosedOrError);
+    provider.on('connection-error', onClosedOrError);
+  }
+
+  async function join() {
+    const room = document.getElementById('room').value.trim();
+    if (!room) return;
+
+    // 중복 join 방지
+    document.getElementById('join').disabled = true;
+
+    ydoc = new Y.Doc();
+    yxml = ydoc.getText('xml');
+
+    // 텍스트에어리어 바인딩
+    initTextareaBinding();
+
+    // 서버 준비까지 대기(너무 잦은 /ready 방지: 시작 800ms, 최대 5s 간격)
+    const ready = await waitServerReady(20000, 800, 5000);
+    if (!ready) {
+      document.getElementById('stat').textContent = '서버 준비 실패';
+      document.getElementById('join').disabled = false;
+      return;
     }
 
-    function initTextareaBinding() {
-      ta.addEventListener('compositionstart', () => { isComposing = true; });
-      ta.addEventListener('compositionend', () => { isComposing = false; syncFromTextarea(); });
-      ta.addEventListener('input', () => {
-        if (isApplyingRemote || isComposing) return;
-        syncFromTextarea();
-      });
-    }
+    provider = buildProvider(room);
+    wireProviderEvents();
+    provider.connect();
+  }
 
-    // Y.Text → textarea
-    function applyFromY() {
+  function initTextareaBinding() {
+    ta.addEventListener('compositionstart', () => { isComposing = true; });
+    ta.addEventListener('compositionend', () => { isComposing = false; syncFromTextarea(); });
+    ta.addEventListener('input', () => {
+      if (isApplyingRemote || isComposing) return;
+      syncFromTextarea();
+    });
+
+    // 원격/로컬 모든 변경 → textarea 반영
+    yxml?.observe?.(() => {
       if (isComposing) return;
       const s = yxml.toString();
       if (ta.value !== s) {
         isApplyingRemote = true;
         ta.value = s;
         isApplyingRemote = false;
+        lastXML = s;
       }
+    });
+  }
+
+  // Y.Text → textarea
+  function applyFromY() {
+    if (isComposing) return;
+    const s = yxml.toString();
+    if (ta.value !== s) {
+      isApplyingRemote = true;
+      ta.value = s;
+      isApplyingRemote = false;
+    }
+  }
+
+  // textarea → Y.Text (IME 안전 diff)
+  function syncFromTextarea() {
+    const oldStr = lastXML;
+    const newStr = ta.value;
+    if (oldStr === newStr) return;
+
+    let p = 0;
+    const minLen = Math.min(oldStr.length, newStr.length);
+    while (p < minLen && oldStr.charCodeAt(p) === newStr.charCodeAt(p)) p++;
+
+    let oldEnd = oldStr.length - 1;
+    let newEnd = newStr.length - 1;
+    while (oldEnd >= p && newEnd >= p &&
+           oldStr.charCodeAt(oldEnd) === newStr.charCodeAt(newEnd)) {
+      oldEnd--; newEnd--;
     }
 
-    // textarea → Y.Text (IME 안전 diff)
-    function syncFromTextarea() {
-      const oldStr = lastXML;
-      const newStr = ta.value;
-      if (oldStr === newStr) return;
+    const deleteLen = (oldEnd - p + 1);
+    const insertText = newStr.slice(p, newEnd + 1);
 
-      // 공통 prefix
-      let p = 0;
-      const minLen = Math.min(oldStr.length, newStr.length);
-      while (p < minLen && oldStr.charCodeAt(p) === newStr.charCodeAt(p)) p++;
+    ydoc.transact(() => {
+      if (deleteLen > 0) yxml.delete(p, deleteLen);
+      if (insertText.length > 0) yxml.insert(p, insertText);
+    });
 
-      // 공통 suffix
-      let oldEnd = oldStr.length - 1;
-      let newEnd = newStr.length - 1;
-      while (oldEnd >= p && newEnd >= p &&
-             oldStr.charCodeAt(oldEnd) === newStr.charCodeAt(newEnd)) {
-        oldEnd--; newEnd--;
-      }
+    lastXML = newStr;
+  }
+</script>
 
-      const deleteLen = (oldEnd - p + 1);
-      const insertText = newStr.slice(p, newEnd + 1);
-
-      ydoc.transact(() => {
-        if (deleteLen > 0) yxml.delete(p, deleteLen);
-        if (insertText.length > 0) yxml.insert(p, insertText);
-      });
-
-      lastXML = newStr;
-    }
-  </script>
 </body>
 </html>
