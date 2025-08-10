@@ -38,4 +38,4 @@ fi
 echo "🏃 Starting server..."
 echo "📄 HTTP Port: ${PORT:-8000}"
 echo "🔌 WebSocket Port: ${WEBSOCKET_PORT:-8765}"
-python3 server.py
+python3 simpleServer.py
