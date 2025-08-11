@@ -18,9 +18,9 @@
 
   <textarea id="xml" placeholder="여기에 XML을 입력하세요"></textarea>
 <script type="module">
-  import * as Y from "https://cdn.jsdelivr.net/npm/yjs@13.6.27/+esm";
-  import { WebsocketProvider } from "https://cdn.jsdelivr.net/npm/y-websocket@3.0.0/+esm";
-
+  import * as Y from 'https://esm.sh/yjs@13.6.27?target=es2022';
+  import { WebsocketProvider } from 'https://esm.sh/y-websocket@3.0.0?target=es2022&deps=yjs@13.6.27';
+  
   let ydoc, yxml, provider;
   let isComposing = false;
   let isApplyingRemote = false;
