@@ -13,6 +13,17 @@ from pycrdt_websocket import WebsocketServer
 from pycrdt_websocket.yroom import YRoom
 from pycrdt import Doc, Text  # 누적 디코딩 및 통계 계산용
 
+#gps server
+from gpssimple.fastapi_gps_endpoints import router as gps_router
+
+app = FastAPI()
+app.include_router(gps_router, prefix="/gps")       # /gps/ingest, /gps/data
+
+@app.get("/gps/", include_in_schema=False)
+def gps_index():
+    return FileResponse("static/gps/index.html")
+#gps server end
+
 # -------------------------
 # 경로/로깅
 # -------------------------
@@ -37,6 +48,17 @@ APP_READY = asyncio.Event()
 # ✅ 자동 로드 패치 적용 여부
 AUTOLOAD_PATCHED = False
 
+# app.py (기존 Flask)
+from flask import Flask, send_from_directory
+from gpssimple.flask_gps_endpoints import gps_bp
+
+app = Flask(__name__)
+app.register_blueprint(gps_bp, url_prefix="/gps")   # /gps/ingest, /gps/data
+
+@app.get("/gps/")
+def gps_index():
+    return send_from_directory("static/gps", "index.html")
+    
 # -------------------------
 # y-websocket 프레임 요약 파서
 # -------------------------
