@@ -14,14 +14,11 @@ from pycrdt_websocket.yroom import YRoom
 from pycrdt import Doc, Text  # 누적 디코딩 및 통계 계산용
 
 #gps server
-from gpssimple.fastapi_gps_endpoints import router as gps_router
+# app.py (당신의 기존 FastAPI 엔트리)
+from gpssimple.fastapi_gps_router import router as gps_router
 
 app = FastAPI()
-app.include_router(gps_router, prefix="/gps")       # /gps/ingest, /gps/data
-
-@app.get("/gps/", include_in_schema=False)
-def gps_index():
-    return FileResponse("static/gps/index.html")
+app.include_router(gps_router, prefix="/gps")   # /gps/ingest, /gps/recent, /gps/latest, /gps/view
 #gps server end
 
 # -------------------------
