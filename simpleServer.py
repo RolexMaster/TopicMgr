@@ -45,17 +45,6 @@ APP_READY = asyncio.Event()
 # ✅ 자동 로드 패치 적용 여부
 AUTOLOAD_PATCHED = False
 
-# app.py (기존 Flask)
-from flask import Flask, send_from_directory
-from gpssimple.flask_gps_endpoints import gps_bp
-
-app = Flask(__name__)
-app.register_blueprint(gps_bp, url_prefix="/gps")   # /gps/ingest, /gps/data
-
-@app.get("/gps/")
-def gps_index():
-    return send_from_directory("static/gps", "index.html")
-    
 # -------------------------
 # y-websocket 프레임 요약 파서
 # -------------------------
