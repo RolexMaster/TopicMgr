@@ -16,9 +16,6 @@ from pycrdt import Doc, Text  # 누적 디코딩 및 통계 계산용
 #gps server
 # app.py (당신의 기존 FastAPI 엔트리)
 from gpssimple.fastapi_gps_router import router as gps_router
-
-app = FastAPI()
-app.include_router(gps_router, prefix="/gps")   # /gps/ingest, /gps/recent, /gps/latest, /gps/view
 #gps server end
 
 # -------------------------
@@ -320,6 +317,7 @@ async def lifespan(app: FastAPI):
         await task_server
 
 app = FastAPI(title="Yjs WebSocket (pycrdt-websocket)", lifespan=lifespan)
+app.include_router(gps_router, prefix="/gps")   # /gps/ingest, /gps/recent, /gps/latest, /gps/view
 
 @app.get("/")
 async def root():
